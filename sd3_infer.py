@@ -7,6 +7,7 @@
 # - `sd3_vae.safetensors` (holds the VAE separately if needed)
 
 import math
+import os
 
 import fire
 import numpy as np
@@ -107,12 +108,11 @@ class T5XXL:
 
 
 class SD3:
-    def __init__(self, model, shift, qk_norm=None):
+    def __init__(self, model, shift):
         with safe_open(model, framework="pt", device="cpu") as f:
             self.model = BaseModel(
                 shift=shift,
                 file=f,
-                qk_norm=qk_norm,
                 prefix="model.diffusion_model.",
                 device="cpu",
                 dtype=torch.float16,
@@ -137,8 +137,6 @@ class VAE:
 
 # Note: Sigma shift value, publicly released models use 3.0
 SHIFT = 3.0
-# QKNORM
-QKNORM = None
 # Naturally, adjust to the width/height of the model you have
 WIDTH = 1024
 HEIGHT = 1024
@@ -160,11 +158,11 @@ INIT_IMAGE = None
 # If init_image is given, this is the percentage of denoising steps to run (1.0 = full denoise, 0.0 = no denoise at all)
 DENOISE = 0.6
 # Output file path
-OUTPUT = "output.png"
+OUTDIR = "."
 
 
 class SD3Inferencer:
-    def load(self, model=MODEL, vae=VAEFile, shift=SHIFT, qk_norm=QKNORM):
+    def load(self, model=MODEL, vae=VAEFile, shift=SHIFT):
         print("Loading tokenizers...")
         # NOTE: if you need a reference impl for a high performance CLIP tokenizer instead of just using the HF transformers one,
         # check https://github.com/Stability-AI/StableSwarmUI/blob/master/src/Utils/CliplikeTokenizer.cs
@@ -177,7 +175,7 @@ class SD3Inferencer:
         print("Loading Google T5-v1-XXL...")
         self.t5xxl = T5XXL()
         print("Loading SD3 model...")
-        self.sd3 = SD3(model, shift, qk_norm)
+        self.sd3 = SD3(model, shift)
         print("Loading VAE model...")
         self.vae = VAE(vae or model)
         print("Models loaded.")
@@ -285,13 +283,13 @@ class SD3Inferencer:
 
     def gen_image(
         self,
-        prompt=PROMPT,
+        prompts=[PROMPT],
         width=WIDTH,
         height=HEIGHT,
         steps=STEPS,
         cfg_scale=CFG_SCALE,
         seed=SEED,
-        output=OUTPUT,
+        out_dir=OUTDIR,
         init_image=INIT_IMAGE,
         denoise=DENOISE,
     ):
@@ -301,43 +299,50 @@ class SD3Inferencer:
             image_data = image_data.resize((width, height), Image.LANCZOS)
             latent = self.vae_encode(image_data)
             latent = SD3LatentFormat().process_in(latent)
-        conditioning = self.get_cond(prompt)
         neg_cond = self.get_cond("")
-        sampled_latent = self.do_sampling(
-            latent,
-            seed,
-            conditioning,
-            neg_cond,
-            steps,
-            cfg_scale,
-            denoise if init_image else 1.0,
-        )
-        image = self.vae_decode(sampled_latent)
-        print(f"Will save to {output}")
-        image.save(output)
-        print("Done")
+        for i, prompt in enumerate(prompts):
+            conditioning = self.get_cond(prompt)
+            sampled_latent = self.do_sampling(
+                latent,
+                seed,
+                conditioning,
+                neg_cond,
+                steps,
+                cfg_scale,
+                denoise if init_image else 1.0,
+            )
+            image = self.vae_decode(sampled_latent)
+            save_path = os.path.join(out_dir, f"{i:06d}.png")
+            print(f"Will save to {save_path}")
+            image.save(save_path)
+            print("Done")
 
 
 @torch.no_grad()
 def main(
-    prompt=PROMPT,
+    prompts=PROMPT,
     width=WIDTH,
     height=HEIGHT,
     steps=STEPS,
     cfg_scale=CFG_SCALE,
     shift=SHIFT,
-    qk_norm=QKNORM,
     model=MODEL,
     vae=VAEFile,
     seed=SEED,
-    output=OUTPUT,
+    out_dir=OUTDIR,
     init_image=INIT_IMAGE,
     denoise=DENOISE,
 ):
     inferencer = SD3Inferencer()
-    inferencer.load(model, vae, shift, qk_norm)
+    inferencer.load(model, vae, shift)
+    if isinstance(prompts, str):
+        if os.path.splitext(prompts)[-1] == ".txt":
+            with open(prompts, "r") as f:
+                prompts = f.readlines()
+        else:
+            prompts = [prompts]
     inferencer.gen_image(
-        prompt, width, height, steps, cfg_scale, seed, output, init_image, denoise
+        prompts, width, height, steps, cfg_scale, seed, out_dir, init_image, denoise
     )
 
 

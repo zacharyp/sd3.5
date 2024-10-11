@@ -58,7 +58,6 @@ class BaseModel(torch.nn.Module):
         dtype=torch.float32,
         file=None,
         prefix="",
-        qk_norm=None,
     ):
         super().__init__()
         # Important configuration values can be quickly determined by checking shapes in the source file
@@ -69,6 +68,9 @@ class BaseModel(torch.nn.Module):
         pos_embed_max_size = round(math.sqrt(num_patches))
         adm_in_channels = file.get_tensor(f"{prefix}y_embedder.mlp.0.weight").shape[1]
         context_shape = file.get_tensor(f"{prefix}context_embedder.weight").shape
+        qk_norm = (
+            f"{prefix}joint_blocks.0.context_block.attn.ln_k.weight" in file.keys()
+        )
         context_embedder_config = {
             "target": "torch.nn.Linear",
             "params": {
