@@ -6,6 +6,7 @@
 # Also can have
 # - `sd3_vae.safetensors` (holds the VAE separately if needed)
 
+import datetime
 import math
 import os
 
@@ -16,6 +17,7 @@ from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
 from PIL import Image
 from safetensors import safe_open
 from sd3_impls import SDVAE, BaseModel, CFGDenoiser, SD3LatentFormat, sample_euler
+from tqdm import tqdm
 
 #################################################################################################
 ### Wrappers for model parts
@@ -143,12 +145,15 @@ HEIGHT = 1024
 # Pick your prompt
 PROMPT = "a photo of a cat"
 # Most models prefer the range of 4-5, but still work well around 7
-CFG_SCALE = 5
+CFG_SCALE = 4.5
 # Different models want different step counts but most will be good at 50, albeit that's slow to run
 # sd3_medium is quite decent at 28 steps
-STEPS = 50
-# Random seed
-SEED = 1
+STEPS = 40
+# Seed
+SEED = 23
+SEEDTYPE = "fixed"
+# SEEDTYPE = "rand"
+# SEEDTYPE = "roll"
 # Actual model file path
 MODEL = "models/sd3_medium.safetensors"
 # VAE model file path, or set None to use the same model file
@@ -158,30 +163,35 @@ INIT_IMAGE = None
 # If init_image is given, this is the percentage of denoising steps to run (1.0 = full denoise, 0.0 = no denoise at all)
 DENOISE = 0.6
 # Output file path
-OUTDIR = "."
+OUTDIR = "outputs"
 
 
 class SD3Inferencer:
-    def load(self, model=MODEL, vae=VAEFile, shift=SHIFT):
-        print("Loading tokenizers...")
+    def print(self, txt):
+        if self.verbose:
+            print(txt)
+
+    def load(self, model=MODEL, vae=VAEFile, shift=SHIFT, verbose=False):
+        self.verbose = verbose
+        self.print("Loading tokenizers...")
         # NOTE: if you need a reference impl for a high performance CLIP tokenizer instead of just using the HF transformers one,
         # check https://github.com/Stability-AI/StableSwarmUI/blob/master/src/Utils/CliplikeTokenizer.cs
         # (T5 tokenizer is different though)
         self.tokenizer = SD3Tokenizer()
-        print("Loading OpenCLIP bigG...")
+        self.print("Loading OpenCLIP bigG...")
         self.clip_g = ClipG()
-        print("Loading OpenAI CLIP L...")
+        self.print("Loading OpenAI CLIP L...")
         self.clip_l = ClipL()
-        print("Loading Google T5-v1-XXL...")
+        self.print("Loading Google T5-v1-XXL...")
         self.t5xxl = T5XXL()
-        print("Loading SD3 model...")
+        self.print("Loading SD3 model...")
         self.sd3 = SD3(model, shift)
-        print("Loading VAE model...")
+        self.print("Loading VAE model...")
         self.vae = VAE(vae or model)
-        print("Models loaded.")
+        self.print("Models loaded.")
 
     def get_empty_latent(self, width, height):
-        print("Prep an empty latent...")
+        self.print("Prep an empty latent...")
         return torch.ones(1, 16, height // 8, width // 8, device="cpu") * 0.0609
 
     def get_sigmas(self, sampling, steps):
@@ -197,7 +207,7 @@ class SD3Inferencer:
 
     def get_noise(self, seed, latent):
         generator = torch.manual_seed(seed)
-        print(
+        self.print(
             f"dtype = {latent.dtype}, layout = {latent.layout}, device = {latent.device}"
         )
         return torch.randn(
@@ -209,7 +219,7 @@ class SD3Inferencer:
         ).to(latent.dtype)
 
     def get_cond(self, prompt):
-        print("Encode prompt...")
+        self.print("Encode prompt...")
         tokens = self.tokenizer.tokenize_with_weights(prompt)
         l_out, l_pooled = self.clip_l.model.encode_token_weights(tokens["l"])
         g_out, g_pooled = self.clip_g.model.encode_token_weights(tokens["g"])
@@ -232,7 +242,7 @@ class SD3Inferencer:
     def do_sampling(
         self, latent, seed, conditioning, neg_cond, steps, cfg_scale, denoise=1.0
     ) -> torch.Tensor:
-        print("Sampling...")
+        self.print("Sampling...")
         latent = latent.half().cuda()
         self.sd3.model = self.sd3.model.cuda()
         noise = self.get_noise(seed, latent).cuda()
@@ -249,11 +259,11 @@ class SD3Inferencer:
         )
         latent = SD3LatentFormat().process_out(latent)
         self.sd3.model = self.sd3.model.cpu()
-        print("Sampling done")
+        self.print("Sampling done")
         return latent
 
     def vae_encode(self, image) -> torch.Tensor:
-        print("Encoding image to latent...")
+        self.print("Encoding image to latent...")
         image = image.convert("RGB")
         image_np = np.array(image).astype(np.float32) / 255.0
         image_np = np.moveaxis(image_np, 2, 0)
@@ -264,11 +274,11 @@ class SD3Inferencer:
         self.vae.model = self.vae.model.cuda()
         latent = self.vae.model.encode(image_torch).cpu()
         self.vae.model = self.vae.model.cpu()
-        print("Encoded")
+        self.print("Encoded")
         return latent
 
     def vae_decode(self, latent) -> Image.Image:
-        print("Decoding latent to image...")
+        self.print("Decoding latent to image...")
         latent = latent.cuda()
         self.vae.model = self.vae.model.cuda()
         image = self.vae.model.decode(latent)
@@ -278,7 +288,7 @@ class SD3Inferencer:
         decoded_np = 255.0 * np.moveaxis(image.cpu().numpy(), 0, 2)
         decoded_np = decoded_np.astype(np.uint8)
         out_image = Image.fromarray(decoded_np)
-        print("Decoded")
+        self.print("Decoded")
         return out_image
 
     def gen_image(
@@ -289,6 +299,7 @@ class SD3Inferencer:
         steps=STEPS,
         cfg_scale=CFG_SCALE,
         seed=SEED,
+        seed_type=SEEDTYPE,
         out_dir=OUTDIR,
         init_image=INIT_IMAGE,
         denoise=DENOISE,
@@ -300,11 +311,19 @@ class SD3Inferencer:
             latent = self.vae_encode(image_data)
             latent = SD3LatentFormat().process_in(latent)
         neg_cond = self.get_cond("")
-        for i, prompt in enumerate(prompts):
+        seed_num = None
+        pbar = tqdm(enumerate(prompts), position=0, leave=True)
+        for i, prompt in pbar:
+            if seed_type == "roll":
+                seed_num = seed if seed_num is None else seed_num + 1
+            elif seed_type == "rand":
+                seed_num = torch.randint(0, 100000, (1,)).item()
+            else:  # fixed
+                seed_num = seed
             conditioning = self.get_cond(prompt)
             sampled_latent = self.do_sampling(
                 latent,
-                seed,
+                seed_num,
                 conditioning,
                 neg_cond,
                 steps,
@@ -313,14 +332,14 @@ class SD3Inferencer:
             )
             image = self.vae_decode(sampled_latent)
             save_path = os.path.join(out_dir, f"{i:06d}.png")
-            print(f"Will save to {save_path}")
+            self.print(f"Will save to {save_path}")
             image.save(save_path)
-            print("Done")
+            self.print("Done")
 
 
 @torch.no_grad()
 def main(
-    prompts=PROMPT,
+    prompt=PROMPT,
     width=WIDTH,
     height=HEIGHT,
     steps=STEPS,
@@ -329,20 +348,39 @@ def main(
     model=MODEL,
     vae=VAEFile,
     seed=SEED,
+    seed_type=SEEDTYPE,
     out_dir=OUTDIR,
     init_image=INIT_IMAGE,
     denoise=DENOISE,
+    verbose=False,
 ):
     inferencer = SD3Inferencer()
-    inferencer.load(model, vae, shift)
-    if isinstance(prompts, str):
-        if os.path.splitext(prompts)[-1] == ".txt":
-            with open(prompts, "r") as f:
+    inferencer.load(model, vae, shift, verbose)
+    if isinstance(prompt, str):
+        if os.path.splitext(prompt)[-1] == ".txt":
+            with open(prompt, "r") as f:
                 prompts = f.readlines()
         else:
-            prompts = [prompts]
+            prompts = [prompt]
+    out_dir = os.path.join(
+        out_dir,
+        os.path.splitext(os.path.basename(model))[0],
+        os.path.splitext(os.path.basename(prompt))[0]
+        + datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S"),
+    )
+    print(f"Saving to {out_dir}")
+    os.makedirs(out_dir, exist_ok=False)
     inferencer.gen_image(
-        prompts, width, height, steps, cfg_scale, seed, out_dir, init_image, denoise
+        prompts,
+        width,
+        height,
+        steps,
+        cfg_scale,
+        seed,
+        seed_type,
+        out_dir,
+        init_image,
+        denoise,
     )
 
 

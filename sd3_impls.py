@@ -69,7 +69,9 @@ class BaseModel(torch.nn.Module):
         adm_in_channels = file.get_tensor(f"{prefix}y_embedder.mlp.0.weight").shape[1]
         context_shape = file.get_tensor(f"{prefix}context_embedder.weight").shape
         qk_norm = (
-            f"{prefix}joint_blocks.0.context_block.attn.ln_k.weight" in file.keys()
+            "rms"
+            if f"{prefix}joint_blocks.0.context_block.attn.ln_k.weight" in file.keys()
+            else None
         )
         context_embedder_config = {
             "target": "torch.nn.Linear",
