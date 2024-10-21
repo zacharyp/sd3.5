@@ -63,8 +63,8 @@ CLIPG_CONFIG = {
 
 
 class ClipG:
-    def __init__(self):
-        with safe_open("models/clip_g.safetensors", framework="pt", device="cpu") as f:
+    def __init__(self, ckpt_path: str):
+        with safe_open(ckpt_path, framework="pt", device="cpu") as f:
             self.model = SDXLClipG(CLIPG_CONFIG, device="cpu", dtype=torch.float32)
             load_into(f, self.model.transformer, "", "cpu", torch.float32)
 
@@ -79,8 +79,8 @@ CLIPL_CONFIG = {
 
 
 class ClipL:
-    def __init__(self):
-        with safe_open("models/clip_l.safetensors", framework="pt", device="cpu") as f:
+    def __init__(self, ckpt_path: str):
+        with safe_open(ckpt_path, framework="pt", device="cpu") as f:
             self.model = SDClipModel(
                 layer="hidden",
                 layer_idx=-2,
@@ -103,8 +103,8 @@ T5_CONFIG = {
 
 
 class T5XXL:
-    def __init__(self):
-        with safe_open("models/t5xxl.safetensors", framework="pt", device="cpu") as f:
+    def __init__(self, ckpt_path: str):
+        with safe_open(ckpt_path, framework="pt", device="cpu") as f:
             self.model = T5XXLModel(T5_CONFIG, device="cpu", dtype=torch.float32)
             load_into(f, self.model.transformer, "", "cpu", torch.float32)
 
@@ -154,24 +154,34 @@ SEED = 23
 SEEDTYPE = "fixed"
 # SEEDTYPE = "rand"
 # SEEDTYPE = "roll"
-# Actual model file path
-MODEL = "models/sd3_medium.safetensors"
+# Model checkpoint name
+CKPT = "sd3_medium.safetensors"
 # VAE model file path, or set None to use the same model file
-VAEFile = None  # "models/sd3_vae.safetensors"
+VAE_FILE = None  # "models/sd3_vae.safetensors"
 # Optional init image file path
 INIT_IMAGE = None
 # If init_image is given, this is the percentage of denoising steps to run (1.0 = full denoise, 0.0 = no denoise at all)
 DENOISE = 0.6
 # Output file path
 OUTDIR = "outputs"
+# Base folder where models are found. Can be an absolute or relative path
+MODEL_FOLDER = "models"
 
 
 class SD3Inferencer:
+
     def print(self, txt):
         if self.verbose:
             print(txt)
 
-    def load(self, model=MODEL, vae=VAEFile, shift=SHIFT, verbose=False):
+    def load(
+        self,
+        model_folder=MODEL_FOLDER,
+        checkpoint=CKPT,
+        vae=VAE_FILE,
+        shift=SHIFT,
+        verbose=False,
+    ):
         self.verbose = verbose
         self.print("Loading tokenizers...")
         # NOTE: if you need a reference impl for a high performance CLIP tokenizer instead of just using the HF transformers one,
@@ -179,15 +189,15 @@ class SD3Inferencer:
         # (T5 tokenizer is different though)
         self.tokenizer = SD3Tokenizer()
         self.print("Loading OpenCLIP bigG...")
-        self.clip_g = ClipG()
+        self.clip_g = ClipG(os.path.join(model_folder, "clip_g.safetensors"))
         self.print("Loading OpenAI CLIP L...")
-        self.clip_l = ClipL()
+        self.clip_l = ClipL(os.path.join(model_folder, "clip_l.safetensors"))
         self.print("Loading Google T5-v1-XXL...")
-        self.t5xxl = T5XXL()
+        self.t5xxl = T5XXL(os.path.join(model_folder, "t5xxl.safetensors"))
         self.print("Loading SD3 model...")
-        self.sd3 = SD3(model, shift)
+        self.sd3 = SD3(checkpoint, shift)
         self.print("Loading VAE model...")
-        self.vae = VAE(vae or model)
+        self.vae = VAE(vae or checkpoint)
         self.print("Models loaded.")
 
     def get_empty_latent(self, width, height):
@@ -345,8 +355,9 @@ def main(
     steps=STEPS,
     cfg_scale=CFG_SCALE,
     shift=SHIFT,
-    model=MODEL,
-    vae=VAEFile,
+    model_folder=MODEL_FOLDER,
+    ckpt=CKPT,
+    vae=VAE_FILE,
     seed=SEED,
     seed_type=SEEDTYPE,
     out_dir=OUTDIR,
@@ -355,7 +366,9 @@ def main(
     verbose=False,
 ):
     inferencer = SD3Inferencer()
-    inferencer.load(model, vae, shift, verbose)
+    if not os.path.isabs(ckpt):
+        ckpt = os.path.join(model_folder, ckpt)
+    inferencer.load(model_folder, ckpt, vae, shift, verbose)
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":
             with open(prompt, "r") as f:
@@ -364,7 +377,7 @@ def main(
             prompts = [prompt]
     out_dir = os.path.join(
         out_dir,
-        os.path.splitext(os.path.basename(model))[0],
+        os.path.splitext(os.path.basename(ckpt))[0],
         os.path.splitext(os.path.basename(prompt))[0]
         + datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S"),
     )
