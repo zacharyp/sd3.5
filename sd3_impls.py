@@ -8,6 +8,8 @@ from mmdit import MMDiT
 from PIL import Image
 from tqdm import tqdm
 
+from dit_embedder import ControlNetEmbedder
+
 #################################################################################################
 ### MMDiT Model Wrapping
 #################################################################################################
@@ -58,6 +60,7 @@ class BaseModel(torch.nn.Module):
         dtype=torch.float32,
         file=None,
         prefix="",
+        load_control_model=True,
     ):
         super().__init__()
         # Important configuration values can be quickly determined by checking shapes in the source file
@@ -96,6 +99,23 @@ class BaseModel(torch.nn.Module):
             dtype=dtype,
         )
         self.model_sampling = ModelSamplingDiscreteFlow(shift=shift)
+        self.control_model = None
+        if load_control_model:
+            hidden_size = 64 * depth
+            num_heads = depth
+            head_dim = hidden_size // num_heads
+            y_size = context_embedder_config['params']['out_features']
+            self.control_model = ControlNetEmbedder(
+                img_size=None,
+                patch_size=patch_size,
+                in_chans=16,
+                num_layers=depth,
+                attention_head_dim=head_dim,
+                num_attention_heads=num_heads,
+                pooled_projection_dim=y_size,
+                joint_attention_dim=y_size,
+                caption_projection_dim=y_size,
+            )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None):
         dtype = self.get_dtype()

@@ -110,7 +110,7 @@ class T5XXL:
 
 
 class SD3:
-    def __init__(self, model, shift):
+    def __init__(self, model, shift, controlnet_checkpoint):
         with safe_open(model, framework="pt", device="cpu") as f:
             self.model = BaseModel(
                 shift=shift,
@@ -118,8 +118,12 @@ class SD3:
                 prefix="model.diffusion_model.",
                 device="cpu",
                 dtype=torch.float16,
+                load_control_model=controlnet_checkpoint is not None,
             ).eval()
             load_into(f, self.model, "model.", "cpu", torch.float16)
+        if controlnet_checkpoint is not None:
+            with safe_open(controlnet_checkpoint, framework="pt", device="cpu") as f:
+                load_into(f, self.model.control_model, "model.", "cpu", torch.float16)
 
 
 class VAE:
@@ -181,6 +185,7 @@ class SD3Inferencer:
         vae=VAE_FILE,
         shift=SHIFT,
         verbose=False,
+        controlnet_checkpoint=None,
     ):
         self.verbose = verbose
         self.print("Loading tokenizers...")
@@ -195,7 +200,7 @@ class SD3Inferencer:
         self.print("Loading Google T5-v1-XXL...")
         self.t5xxl = T5XXL(os.path.join(model_folder, "t5xxl.safetensors"))
         self.print("Loading SD3 model...")
-        self.sd3 = SD3(checkpoint, shift)
+        self.sd3 = SD3(checkpoint, shift, controlnet_checkpoint)
         self.print("Loading VAE model...")
         self.vae = VAE(vae or checkpoint)
         self.print("Models loaded.")
@@ -363,12 +368,16 @@ def main(
     out_dir=OUTDIR,
     init_image=INIT_IMAGE,
     denoise=DENOISE,
+    controlnet_checkpoint=None,
     verbose=False,
+    **kwargs
 ):
+    assert not kwargs, f"Unknown arguments: {kwargs}"
+
     inferencer = SD3Inferencer()
     if not os.path.isabs(ckpt):
         ckpt = os.path.join(model_folder, ckpt)
-    inferencer.load(model_folder, ckpt, vae, shift, verbose)
+    inferencer.load(model_folder, ckpt, vae, shift, verbose, controlnet_checkpoint)
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":
             with open(prompt, "r") as f:
