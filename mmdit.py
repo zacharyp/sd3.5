@@ -603,7 +603,7 @@ class MMDiT(nn.Module):
         t: torch.Tensor,
         y: Optional[torch.Tensor] = None,
         context: Optional[torch.Tensor] = None,
-        control_cond: Optional[torch.Tensor] = None,
+        controlnet_cond: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass of DiT.

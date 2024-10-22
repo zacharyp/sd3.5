@@ -256,7 +256,7 @@ class SD3Inferencer:
         return {"c_crossattn": cond, "y": pooled}
 
     def do_sampling(
-        self, latent, seed, conditioning, neg_cond, steps, cfg_scale, denoise=1.0
+        self, latent, seed, conditioning, neg_cond, steps, cfg_scale, controlnet_cond=None, denoise=1.0
     ) -> torch.Tensor:
         self.print("Sampling...")
         latent = latent.half().cuda()
@@ -266,7 +266,9 @@ class SD3Inferencer:
         sigmas = sigmas[int(steps * (1 - denoise)) :]
         conditioning = self.fix_cond(conditioning)
         neg_cond = self.fix_cond(neg_cond)
-        extra_args = {"cond": conditioning, "uncond": neg_cond, "cond_scale": cfg_scale}
+        if controlnet_cond is not None:
+            controlnet_hidden_states = self.sd3.model.control_model(controlnet_cond)
+        extra_args = {"cond": conditioning, "uncond": neg_cond, "cond_scale": cfg_scale, "controlnet_hidden_states": controlnet_hidden_states}
         noise_scaled = self.sd3.model.model_sampling.noise_scaling(
             sigmas[0], noise, latent, self.max_denoise(sigmas)
         )
@@ -328,6 +330,7 @@ class SD3Inferencer:
         controlnet_cond_image=CONTROLNET_COND_IMAGE,
         denoise=DENOISE,
     ):
+        controlnet_cond = None
         if init_image:
             initial_latent = self._image_to_latent(init_image, width, height)
         else:
@@ -352,6 +355,7 @@ class SD3Inferencer:
                 neg_cond,
                 steps,
                 cfg_scale,
+                controlnet_cond,
                 denoise if init_image else 1.0,
             )
             image = self.vae_decode(sampled_latent)

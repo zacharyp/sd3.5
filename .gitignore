@@ -1,6 +1,7 @@
 .sd3.5
 models/
 outputs/
+inputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
