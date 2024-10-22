@@ -266,9 +266,7 @@ class SD3Inferencer:
         sigmas = sigmas[int(steps * (1 - denoise)) :]
         conditioning = self.fix_cond(conditioning)
         neg_cond = self.fix_cond(neg_cond)
-        if controlnet_cond is not None:
-            controlnet_hidden_states = self.sd3.model.control_model(controlnet_cond)
-        extra_args = {"cond": conditioning, "uncond": neg_cond, "cond_scale": cfg_scale, "controlnet_hidden_states": controlnet_hidden_states}
+        extra_args = {"cond": conditioning, "uncond": neg_cond, "cond_scale": cfg_scale, "controlnet_cond": controlnet_cond}
         noise_scaled = self.sd3.model.model_sampling.noise_scaling(
             sigmas[0], noise, latent, self.max_denoise(sigmas)
         )

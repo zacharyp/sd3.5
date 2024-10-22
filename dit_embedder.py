@@ -280,7 +280,6 @@ class ControlNetEmbedder(nn.Module):
         num_layers: int,
         pos_embed_max_size: Optional[int] = None,
         resize_cond_if_needed: bool = False,
-        use_pre_embed_x: bool = False,
     ):
         super().__init__()
         self.inner_dim = num_attention_heads * attention_head_dim
@@ -303,7 +302,6 @@ class ControlNetEmbedder(nn.Module):
             for _ in range(num_layers)
         )
         self.resize_cond_if_needed = resize_cond_if_needed
-        self.use_pre_embed_x = use_pre_embed_x
 
         self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
@@ -322,18 +320,12 @@ class ControlNetEmbedder(nn.Module):
         self,
         hidden_states: Tensor,
         controlnet_cond: Tensor,
+        pooled_projections: Tensor,
         conditioning_scale: int = 1,
-        encoder_hidden_states: Optional[Tensor] = None,
-        pooled_projections: Optional[Tensor] = None,
         timestep: Optional[Tensor] = None,
     ) -> Tuple[Tensor, List[Tensor]]:
-        if self.use_pre_embed_x:
-            hidden_states = self.pos_embed(hidden_states)
 
-        if pooled_projections is None:
-            pooled_projections = torch.zeros_like(encoder_hidden_states)
         temb = self.time_text_embed(timestep, pooled_projections)
-        encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
         hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
 

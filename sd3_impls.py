@@ -117,12 +117,12 @@ class BaseModel(torch.nn.Module):
                 caption_projection_dim=y_size,
             )
 
-    def apply_model(self, x, sigma, c_crossattn=None, y=None):
+    def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):
         dtype = self.get_dtype()
         timestep = self.model_sampling.timestep(sigma).float()
         control_cond = None
-        if self.control_model is not None:
-            control_cond = self.control_model(x.to(dtype))
+        if controlnet_cond is not None:
+            control_cond = self.control_model(x.to(dtype), controlnet_cond, y, 1, sigma)
         model_output = self.diffusion_model(
             x.to(dtype), timestep, context=c_crossattn.to(dtype), y=y.to(dtype), control_cond=control_cond
         ).float()
@@ -142,13 +142,14 @@ class CFGDenoiser(torch.nn.Module):
         super().__init__()
         self.model = model
 
-    def forward(self, x, timestep, cond, uncond, cond_scale):
+    def forward(self, x, timestep, cond, uncond, cond_scale, **kwargs):
         # Run cond and uncond in a batch together
         batched = self.model.apply_model(
             torch.cat([x, x]),
             torch.cat([timestep, timestep]),
             c_crossattn=torch.cat([cond["c_crossattn"], uncond["c_crossattn"]]),
             y=torch.cat([cond["y"], uncond["y"]]),
+            **kwargs
         )
         # Then split and apply CFG Scaling
         pos_out, neg_out = batched.chunk(2)
