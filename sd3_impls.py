@@ -120,8 +120,11 @@ class BaseModel(torch.nn.Module):
     def apply_model(self, x, sigma, c_crossattn=None, y=None):
         dtype = self.get_dtype()
         timestep = self.model_sampling.timestep(sigma).float()
+        control_cond = None
+        if self.control_model is not None:
+            control_cond = self.control_model(x.to(dtype))
         model_output = self.diffusion_model(
-            x.to(dtype), timestep, context=c_crossattn.to(dtype), y=y.to(dtype)
+            x.to(dtype), timestep, context=c_crossattn.to(dtype), y=y.to(dtype), control_cond=control_cond
         ).float()
         return self.model_sampling.calculate_denoised(sigma, model_output, x)
 

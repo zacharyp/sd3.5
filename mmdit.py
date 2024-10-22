@@ -597,7 +597,14 @@ class MMDiT(nn.Module):
         x = self.final_layer(x, c_mod)  # (N, T, patch_size ** 2 * out_channels)
         return x
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor, y: Optional[torch.Tensor] = None, context: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        t: torch.Tensor,
+        y: Optional[torch.Tensor] = None,
+        context: Optional[torch.Tensor] = None,
+        control_cond: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         Forward pass of DiT.
         x: (N, C, H, W) tensor of spatial inputs (images or latent representations of images)

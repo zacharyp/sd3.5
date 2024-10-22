@@ -164,6 +164,7 @@ CKPT = "sd3_medium.safetensors"
 VAE_FILE = None  # "models/sd3_vae.safetensors"
 # Optional init image file path
 INIT_IMAGE = None
+CONTROLNET_COND_IMAGE = None
 # If init_image is given, this is the percentage of denoising steps to run (1.0 = full denoise, 0.0 = no denoise at all)
 DENOISE = 0.6
 # Output file path
@@ -306,6 +307,13 @@ class SD3Inferencer:
         self.print("Decoded")
         return out_image
 
+    def _image_to_latent(self, image, width, height):
+        image_data = Image.open(image)
+        image_data = image_data.resize((width, height), Image.LANCZOS)
+        latent = self.vae_encode(image_data)
+        latent = SD3LatentFormat().process_in(latent)
+        return latent
+
     def gen_image(
         self,
         prompts=[PROMPT],
@@ -317,14 +325,15 @@ class SD3Inferencer:
         seed_type=SEEDTYPE,
         out_dir=OUTDIR,
         init_image=INIT_IMAGE,
+        controlnet_cond_image=CONTROLNET_COND_IMAGE,
         denoise=DENOISE,
     ):
-        latent = self.get_empty_latent(width, height)
         if init_image:
-            image_data = Image.open(init_image)
-            image_data = image_data.resize((width, height), Image.LANCZOS)
-            latent = self.vae_encode(image_data)
-            latent = SD3LatentFormat().process_in(latent)
+            initial_latent = self._image_to_latent(init_image, width, height)
+        else:
+            initial_latent = self.get_empty_latent(width, height)
+        if controlnet_cond_image:
+            controlnet_cond = self._image_to_latent(controlnet_cond_image, width, height)
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)
@@ -337,7 +346,7 @@ class SD3Inferencer:
                 seed_num = seed
             conditioning = self.get_cond(prompt)
             sampled_latent = self.do_sampling(
-                latent,
+                initial_latent,
                 seed_num,
                 conditioning,
                 neg_cond,
@@ -346,6 +355,7 @@ class SD3Inferencer:
                 denoise if init_image else 1.0,
             )
             image = self.vae_decode(sampled_latent)
+            out_dir = out_dir.replace(" ", "_")
             save_path = os.path.join(out_dir, f"{i:06d}.png")
             self.print(f"Will save to {save_path}")
             image.save(save_path)
@@ -369,6 +379,7 @@ def main(
     init_image=INIT_IMAGE,
     denoise=DENOISE,
     controlnet_checkpoint=None,
+    controlnet_cond_image=None,
     verbose=False,
     **kwargs
 ):
@@ -402,6 +413,7 @@ def main(
         seed_type,
         out_dir,
         init_image,
+        controlnet_cond_image,
         denoise,
     )
 
