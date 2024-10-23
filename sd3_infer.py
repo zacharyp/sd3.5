@@ -357,7 +357,6 @@ class SD3Inferencer:
                 denoise if init_image else 1.0,
             )
             image = self.vae_decode(sampled_latent)
-            out_dir = out_dir.replace(" ", "_")
             save_path = os.path.join(out_dir, f"{i:06d}.png")
             self.print(f"Will save to {save_path}")
             image.save(save_path)
@@ -402,7 +401,7 @@ def main(
         os.path.splitext(os.path.basename(ckpt))[0],
         os.path.splitext(os.path.basename(prompt))[0]
         + datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S"),
-    )
+    ).replace(" ", "_")
     print(f"Saving to {out_dir}")
     os.makedirs(out_dir, exist_ok=False)
     inferencer.gen_image(

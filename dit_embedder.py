@@ -349,7 +349,4 @@ class ControlNetEmbedder(nn.Module):
         controlnet_block_res_samples = [
             sample * conditioning_scale for sample in controlnet_block_res_samples
         ]
-        return {
-            "hidden_states": hidden_states,
-            "controlnet_block_res_samples": controlnet_block_res_samples,
-        }
+        return controlnet_block_res_samples
