@@ -154,7 +154,7 @@ CFG_SCALE = 4.5
 # sd3_medium is quite decent at 28 steps
 STEPS = 40
 # Seed
-SEED = 23
+SEED = 0
 SEEDTYPE = "fixed"
 # SEEDTYPE = "rand"
 # SEEDTYPE = "roll"
@@ -206,9 +206,16 @@ class SD3Inferencer:
         self.vae = VAE(vae or checkpoint)
         self.print("Models loaded.")
 
-    def get_empty_latent(self, width, height):
+    def get_empty_latent(self, batch_size, width, height, seed, device="cuda"):
         self.print("Prep an empty latent...")
-        return torch.ones(1, 16, height // 8, width // 8, device="cpu") * 0.0609
+        shape = (batch_size, 16, height // 8, width // 8)
+        latents = torch.zeros(shape, device=device)
+        for i in range(shape[0]):
+            prng = torch.Generator(device=device).manual_seed(int(seed + i))
+            latents[i] = torch.randn(
+                shape[1:], generator=prng, device=device
+            )
+        return latents
 
     def get_sigmas(self, sampling, steps):
         start = sampling.timestep(sampling.sigma_max)
@@ -332,7 +339,8 @@ class SD3Inferencer:
         if init_image:
             initial_latent = self._image_to_latent(init_image, width, height)
         else:
-            initial_latent = self.get_empty_latent(width, height)
+            initial_latent = self.get_empty_latent(1, width, height, seed, "cpu")
+            initial_latent = initial_latent.cuda()
         if controlnet_cond_image:
             controlnet_cond = self._image_to_latent(controlnet_cond_image, width, height)
         neg_cond = self.get_cond("")
@@ -396,10 +404,15 @@ def main(
                 prompts = f.readlines()
         else:
             prompts = [prompt]
+
+    # Linux filesystems have a character limit for file paths which might be shorter than
+    # certain prompts.
+    prompt_for_filename = prompt[:30] + "..." if len(prompt) > 30 else prompt
+
     out_dir = os.path.join(
         out_dir,
         os.path.splitext(os.path.basename(ckpt))[0],
-        os.path.splitext(os.path.basename(prompt))[0]
+        os.path.splitext(os.path.basename(prompt_for_filename))[0]
         + datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S"),
     ).replace(" ", "_")
     print(f"Saving to {out_dir}")
