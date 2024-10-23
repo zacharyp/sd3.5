@@ -123,7 +123,7 @@ class SD3:
             load_into(f, self.model, "model.", "cpu", torch.float16)
         if controlnet_checkpoint is not None:
             with safe_open(controlnet_checkpoint, framework="pt", device="cpu") as f:
-                load_into(f, self.model.control_model, "model.", "cpu", torch.float16)
+                load_into(f, self.model.control_model, "", "cpu")
 
 
 class VAE:

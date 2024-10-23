@@ -585,13 +585,24 @@ class MMDiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, w * p))
         return imgs
 
-    def forward_core_with_concat(self, x: torch.Tensor, c_mod: torch.Tensor, context: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward_core_with_concat(
+        self,
+        x: torch.Tensor,
+        c_mod: torch.Tensor,
+        context: Optional[torch.Tensor] = None,
+        controlnet_hidden_states: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if self.register_length > 0:
             context = torch.cat((repeat(self.register, "1 ... -> b ...", b=x.shape[0]), context if context is not None else torch.Tensor([]).type_as(x)), 1)
 
         # context is B, L', D
         # x is B, L, D
-        for block in self.joint_blocks:
+        for i, block in enumerate(self.joint_blocks):
+            if controlnet_hidden_states is not None:
+                controlnet_block_interval = len(self.joint_blocks) // len(
+                    controlnet_hidden_states
+                )
+                x = x + controlnet_hidden_states[i // controlnet_block_interval]
             context, x = block(context, x, c=c_mod)
 
         x = self.final_layer(x, c_mod)  # (N, T, patch_size ** 2 * out_channels)
@@ -603,7 +614,7 @@ class MMDiT(nn.Module):
         t: torch.Tensor,
         y: Optional[torch.Tensor] = None,
         context: Optional[torch.Tensor] = None,
-        controlnet_cond: Optional[torch.Tensor] = None,
+        controlnet_hidden_states: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass of DiT.
@@ -620,7 +631,7 @@ class MMDiT(nn.Module):
 
         context = self.context_embedder(context)
 
-        x = self.forward_core_with_concat(x, c, context)
+        x = self.forward_core_with_concat(x, c, context, controlnet_hidden_states)
 
         x = self.unpatchify(x, hw=hw)  # (N, out_channels, H, W)
         return x
