@@ -275,8 +275,6 @@ class ControlNetEmbedder(nn.Module):
         attention_head_dim: int,
         num_attention_heads: int,
         pooled_projection_dim: int,
-        joint_attention_dim: int,
-        caption_projection_dim: int,
         num_layers: int,
         pos_embed_max_size: Optional[int] = None,
         resize_cond_if_needed: bool = False,
@@ -294,7 +292,6 @@ class ControlNetEmbedder(nn.Module):
             embedding_dim=self.inner_dim,
             pooled_projection_dim=pooled_projection_dim,
         )
-        self.context_embedder = nn.Linear(joint_attention_dim, caption_projection_dim)
         self.transformer_blocks = nn.ModuleList(
             DismantledBlock(
                 hidden_size=self.inner_dim, num_heads=num_attention_heads, qkv_bias=True

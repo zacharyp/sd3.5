@@ -104,7 +104,6 @@ class BaseModel(torch.nn.Module):
             hidden_size = 64 * depth
             num_heads = depth
             head_dim = hidden_size // num_heads
-            y_size = context_shape[1]
             self.control_model = ControlNetEmbedder(
                 img_size=None,
                 patch_size=patch_size,
@@ -112,9 +111,7 @@ class BaseModel(torch.nn.Module):
                 num_layers=depth,
                 attention_head_dim=head_dim,
                 num_attention_heads=num_heads,
-                pooled_projection_dim=y_size,
-                joint_attention_dim=y_size,
-                caption_projection_dim=y_size,
+                pooled_projection_dim=adm_in_channels,
             )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):
@@ -122,11 +119,10 @@ class BaseModel(torch.nn.Module):
         timestep = self.model_sampling.timestep(sigma).float()
         controlnet_hidden_states = None
         if controlnet_cond is not None:
-            y_cond = self.diffusion_model.y_embedder(y).to(dtype)
             x_cond = self.diffusion_model.x_embedder(x).to(dtype)
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
-            controlnet_hidden_states = self.control_model(x_cond, controlnet_cond, y_cond, 1, sigma)
+            controlnet_hidden_states = self.control_model(x_cond, controlnet_cond, y, 1, sigma)
         model_output = self.diffusion_model(
             x.to(dtype), timestep, context=c_crossattn.to(dtype), y=y.to(dtype), controlnet_hidden_states=controlnet_hidden_states
         ).float()
