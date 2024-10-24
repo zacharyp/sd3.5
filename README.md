@@ -6,6 +6,11 @@ Contains code for the text encoders (OpenAI CLIP-L/14, OpenCLIP bigG, Google T5-
 
 Note: this repo is a reference library meant to assist partner organizations in implementing SD3. For alternate inference, use [Comfy](https://github.com/comfyanonymous/ComfyUI).
 
+### Updates
+
+- Oct 24, 2024 : Updated code license to MIT License.
+- Oct 22, 2024 : Released inference code for SD3.5-Large, Large-Turbo. Also works on SD3-Medium.
+
 ### Download
 
 Download the following models from HuggingFace into `models` directory:
@@ -72,9 +77,7 @@ The code included here originates from:
 
 ### Legal
 
-Stability AI’s Stable Diffusion 3.5 model, including its code and weights, are licensed subject to the Stability AI Community License Agreement (https://stability.ai/community-license-agreement), as well as our accompanying Acceptable Use Policy (https://stability.ai/use-policy).
-
-Stability AI Community License, Copyright © Stability AI, Ltd. All Rights Reserved.
+Check the LICENSE-CODE file.
 
 #### Note
 
