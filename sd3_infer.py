@@ -363,6 +363,12 @@ CONFIGS = {
         "steps": 50,
         "sampler": "dpmpp_2m",
     },
+    "sd3.5_medium": {
+        "shift": 3.0,
+        "cfg": 5.0,
+        "steps": 50,
+        "sampler": "dpmpp_2m",
+    },
     "sd3.5_large": {
         "shift": 3.0,
         "cfg": 4.5,
@@ -392,12 +398,18 @@ def main(
     denoise=DENOISE,
     verbose=False,
 ):
-    steps = steps or CONFIGS[os.path.splitext(os.path.basename(model))[0]]["steps"]
-    cfg = cfg or CONFIGS[os.path.splitext(os.path.basename(model))[0]]["cfg"]
-    shift = shift or CONFIGS[os.path.splitext(os.path.basename(model))[0]]["shift"]
-    sampler = (
-        sampler or CONFIGS[os.path.splitext(os.path.basename(model))[0]]["sampler"]
+    steps = steps or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
+        "steps", 50
     )
+    cfg = cfg or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
+        "cfg", 5
+    )
+    shift = shift or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
+        "shift", 3
+    )
+    sampler = sampler or CONFIGS.get(
+        os.path.splitext(os.path.basename(model))[0], {}
+    ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
     inferencer.load(model, vae, shift, verbose)
