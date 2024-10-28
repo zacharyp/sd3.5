@@ -8,6 +8,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
+from dit_embedder import ControlNetEmbedder
 from mmditx import MMDiTX
 
 #################################################################################################
@@ -60,6 +61,7 @@ class BaseModel(torch.nn.Module):
         dtype=torch.float32,
         file=None,
         prefix="",
+        load_control_model=False,
         verbose=False,
     ):
         super().__init__()
@@ -112,12 +114,40 @@ class BaseModel(torch.nn.Module):
             verbose=verbose,
         )
         self.model_sampling = ModelSamplingDiscreteFlow(shift=shift)
+        self.control_model = None
+        if load_control_model:
+            if verbose:
+                print("mmdit initializing ControlNetEmbedder")
+            hidden_size = 64 * depth
+            num_heads = depth
+            head_dim = hidden_size // num_heads
+            self.control_model = ControlNetEmbedder(
+                img_size=None,
+                patch_size=patch_size,
+                in_chans=16,
+                num_layers=depth,
+                attention_head_dim=head_dim,
+                num_attention_heads=num_heads,
+                pooled_projection_dim=adm_in_channels,
+            )
 
-    def apply_model(self, x, sigma, c_crossattn=None, y=None):
+    def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):
         dtype = self.get_dtype()
         timestep = self.model_sampling.timestep(sigma).float()
+        controlnet_hidden_states = None
+        if controlnet_cond is not None:
+            x_cond = self.diffusion_model.x_embedder(x).to(dtype)
+            controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
+            controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
+            controlnet_hidden_states = self.control_model(
+                x_cond, controlnet_cond, y, 1, sigma
+            )
         model_output = self.diffusion_model(
-            x.to(dtype), timestep, context=c_crossattn.to(dtype), y=y.to(dtype)
+            x.to(dtype),
+            timestep,
+            context=c_crossattn.to(dtype),
+            y=y.to(dtype),
+            controlnet_hidden_states=controlnet_hidden_states,
         ).float()
         return self.model_sampling.calculate_denoised(sigma, model_output, x)
 
@@ -135,13 +165,14 @@ class CFGDenoiser(torch.nn.Module):
         super().__init__()
         self.model = model
 
-    def forward(self, x, timestep, cond, uncond, cond_scale):
+    def forward(self, x, timestep, cond, uncond, cond_scale, **kwargs):
         # Run cond and uncond in a batch together
         batched = self.model.apply_model(
             torch.cat([x, x]),
             torch.cat([timestep, timestep]),
             c_crossattn=torch.cat([cond["c_crossattn"], uncond["c_crossattn"]]),
             y=torch.cat([cond["y"], uncond["y"]]),
+            **kwargs,
         )
         # Then split and apply CFG Scaling
         pos_out, neg_out = batched.chunk(2)

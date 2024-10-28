@@ -112,7 +112,7 @@ class T5XXL:
 
 
 class SD3:
-    def __init__(self, model, shift, verbose=False):
+    def __init__(self, model, shift, controlnet_ckpt=None, verbose=False):
         with safe_open(model, framework="pt", device="cpu") as f:
             self.model = BaseModel(
                 shift=shift,
@@ -120,9 +120,13 @@ class SD3:
                 prefix="model.diffusion_model.",
                 device="cpu",
                 dtype=torch.float16,
+                load_control_model=controlnet_ckpt is not None,
                 verbose=verbose,
             ).eval()
             load_into(f, self.model, "model.", "cpu", torch.float16)
+        if controlnet_ckpt is not None:
+            with safe_open(controlnet_ckpt, framework="pt", device="cpu") as f:
+                load_into(f, self.model.control_model, "", "cpu")
 
 
 class VAE:
@@ -165,13 +169,16 @@ MODEL = "models/sd3.5_large.safetensors"
 VAEFile = None  # "models/sd3_vae.safetensors"
 # Optional init image file path
 INIT_IMAGE = None
+# ControlNet
+CONTROLNET_COND_IMAGE = None
 # If init_image is given, this is the percentage of denoising steps to run (1.0 = full denoise, 0.0 = no denoise at all)
 DENOISE = 0.6
 # Output file path
 OUTDIR = "outputs"
 # SAMPLER
-# SAMPLER = "euler"
 SAMPLER = "dpmpp_2m"
+# MODEL FOLDER
+MODEL_FOLDER = "models"
 
 
 class SD3Inferencer:
@@ -179,7 +186,14 @@ class SD3Inferencer:
         if self.verbose:
             print(txt)
 
-    def load(self, model=MODEL, vae=VAEFile, shift=SHIFT, verbose=False):
+    def load(
+        self,
+        model=MODEL,
+        vae=VAEFile,
+        shift=SHIFT,
+        controlnet_ckpt=None,
+        verbose=False,
+    ):
         self.verbose = verbose
         print("Loading tokenizers...")
         # NOTE: if you need a reference impl for a high performance CLIP tokenizer instead of just using the HF transformers one,
@@ -193,7 +207,7 @@ class SD3Inferencer:
         print("Loading Google T5-v1-XXL...")
         self.t5xxl = T5XXL()
         print(f"Loading SD3 model {os.path.basename(model)}...")
-        self.sd3 = SD3(model, shift, verbose)
+        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose)
         print("Loading VAE model...")
         self.vae = VAE(vae or model)
         print("Models loaded.")
@@ -256,6 +270,7 @@ class SD3Inferencer:
         steps,
         cfg_scale,
         sampler="dpmpp_2m",
+        controlnet_cond=None,
         denoise=1.0,
     ) -> torch.Tensor:
         self.print("Sampling...")
@@ -266,7 +281,12 @@ class SD3Inferencer:
         sigmas = sigmas[int(steps * (1 - denoise)) :]
         conditioning = self.fix_cond(conditioning)
         neg_cond = self.fix_cond(neg_cond)
-        extra_args = {"cond": conditioning, "uncond": neg_cond, "cond_scale": cfg_scale}
+        extra_args = {
+            "cond": conditioning,
+            "uncond": neg_cond,
+            "cond_scale": cfg_scale,
+            "controlnet_cond": controlnet_cond,
+        }
         noise_scaled = self.sd3.model.model_sampling.noise_scaling(
             sigmas[0], noise, latent, self.max_denoise(sigmas)
         )
@@ -308,6 +328,13 @@ class SD3Inferencer:
         self.print("Decoded")
         return out_image
 
+    def _image_to_latent(self, image, width, height):
+        image_data = Image.open(image)
+        image_data = image_data.resize((width, height), Image.LANCZOS)
+        latent = self.vae_encode(image_data)
+        latent = SD3LatentFormat().process_in(latent)
+        return latent
+
     def gen_image(
         self,
         prompts=[PROMPT],
@@ -319,18 +346,22 @@ class SD3Inferencer:
         seed=SEED,
         seed_type=SEEDTYPE,
         out_dir=OUTDIR,
+        controlnet_cond_image=CONTROLNET_COND_IMAGE,
         init_image=INIT_IMAGE,
         denoise=DENOISE,
     ):
-        latent = self.get_empty_latent(width, height)
+        controlnet_cond = None
         if init_image:
-            image_data = Image.open(init_image)
-            image_data = image_data.resize((width, height), Image.LANCZOS)
-            latent = self.vae_encode(image_data)
-            latent = SD3LatentFormat().process_in(latent)
+            latent = self._image_to_latent(init_image, width, height)
+        else:
+            latent = self.get_empty_latent(width, height)
+        if controlnet_cond_image:
+            controlnet_cond = self._image_to_latent(
+                controlnet_cond_image, width, height
+            )
         neg_cond = self.get_cond("")
         seed_num = None
-        pbar = tqdm(enumerate(prompts), total=len(prompts), position=0, leave=True)
+        pbar = tqdm(enumerate(prompts), position=0, leave=True)
         for i, prompt in pbar:
             if seed_type == "roll":
                 seed_num = seed if seed_num is None else seed_num + 1
@@ -347,6 +378,7 @@ class SD3Inferencer:
                 steps,
                 cfg_scale,
                 sampler,
+                controlnet_cond,
                 denoise if init_image else 1.0,
             )
             image = self.vae_decode(sampled_latent)
@@ -393,11 +425,15 @@ def main(
     shift=None,
     width=WIDTH,
     height=HEIGHT,
+    controlnet_ckpt=None,
+    controlnet_cond_image=None,
     vae=VAEFile,
     init_image=INIT_IMAGE,
     denoise=DENOISE,
     verbose=False,
+    **kwargs,
 ):
+    assert not kwargs, f"Unknown arguments: {kwargs}"
     steps = steps or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
         "steps", 50
     )
@@ -412,7 +448,7 @@ def main(
     ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
-    inferencer.load(model, vae, shift, verbose)
+    inferencer.load(model, vae, shift, controlnet_ckpt, verbose)
 
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":
@@ -423,7 +459,14 @@ def main(
 
     out_dir = os.path.join(
         out_dir,
-        os.path.splitext(os.path.basename(model))[0],
+        (
+            os.path.splitext(os.path.basename(model))[0]
+            + (
+                "_" + os.path.splitext(os.path.basename(controlnet_ckpt))[0]
+                if controlnet_ckpt is not None
+                else ""
+            )
+        ),
         os.path.splitext(os.path.basename(prompt))[0][:50]
         + (postfix or datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S")),
     )
@@ -440,6 +483,7 @@ def main(
         seed,
         seed_type,
         out_dir,
+        controlnet_cond_image,
         init_image,
         denoise,
     )
