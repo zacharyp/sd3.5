@@ -139,8 +139,9 @@ class BaseModel(torch.nn.Module):
             x_cond = self.diffusion_model.x_embedder(x).to(dtype)
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
+            y_cond = self.diffusion_model.y_embedder(y).to(dtype)
             controlnet_hidden_states = self.control_model(
-                x_cond, controlnet_cond, y, 1, sigma
+                x_cond, controlnet_cond, y_cond, 1, sigma
             )
         model_output = self.diffusion_model(
             x.to(dtype),
