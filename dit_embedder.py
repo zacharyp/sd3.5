@@ -257,7 +257,7 @@ class CombinedTimestepTextProjEmbeddings(nn.Module):
             timesteps_proj.to(dtype=pooled_projection.dtype)
         )
 
-        pooled_projection = self.text_embedder(pooled_projection)
+        pooled_projection = self.text_embedder(pooled_projection.to(dtype=torch.float32))
 
         conditioning = timesteps_emb + pooled_projection
 

@@ -65,8 +65,10 @@ CLIPG_CONFIG = {
 
 
 class ClipG:
-    def __init__(self):
-        with safe_open("models/clip_g.safetensors", framework="pt", device="cpu") as f:
+    def __init__(self, model_folder: str):
+        with safe_open(
+            f"{model_folder}/clip_g.safetensors", framework="pt", device="cpu"
+        ) as f:
             self.model = SDXLClipG(CLIPG_CONFIG, device="cpu", dtype=torch.float32)
             load_into(f, self.model.transformer, "", "cpu", torch.float32)
 
@@ -81,8 +83,10 @@ CLIPL_CONFIG = {
 
 
 class ClipL:
-    def __init__(self):
-        with safe_open("models/clip_l.safetensors", framework="pt", device="cpu") as f:
+    def __init__(self, model_folder: str):
+        with safe_open(
+            f"{model_folder}/clip_l.safetensors", framework="pt", device="cpu"
+        ) as f:
             self.model = SDClipModel(
                 layer="hidden",
                 layer_idx=-2,
@@ -105,8 +109,10 @@ T5_CONFIG = {
 
 
 class T5XXL:
-    def __init__(self):
-        with safe_open("models/t5xxl.safetensors", framework="pt", device="cpu") as f:
+    def __init__(self, model_folder: str):
+        with safe_open(
+            f"{model_folder}/t5xxl.safetensors", framework="pt", device="cpu"
+        ) as f:
             self.model = T5XXLModel(T5_CONFIG, device="cpu", dtype=torch.float32)
             load_into(f, self.model.transformer, "", "cpu", torch.float32)
 
@@ -192,6 +198,7 @@ class SD3Inferencer:
         vae=VAEFile,
         shift=SHIFT,
         controlnet_ckpt=None,
+        model_folder:str=MODEL_FOLDER,
         verbose=False,
     ):
         self.verbose = verbose
@@ -201,11 +208,11 @@ class SD3Inferencer:
         # (T5 tokenizer is different though)
         self.tokenizer = SD3Tokenizer()
         print("Loading OpenAI CLIP L...")
-        self.clip_l = ClipL()
+        self.clip_l = ClipL(model_folder)
         print("Loading OpenCLIP bigG...")
-        self.clip_g = ClipG()
+        self.clip_g = ClipG(model_folder)
         print("Loading Google T5-v1-XXL...")
-        self.t5xxl = T5XXL()
+        self.t5xxl = T5XXL(model_folder)
         print(f"Loading SD3 model {os.path.basename(model)}...")
         self.sd3 = SD3(model, shift, controlnet_ckpt, verbose)
         print("Loading VAE model...")
@@ -431,6 +438,7 @@ def main(
     init_image=INIT_IMAGE,
     denoise=DENOISE,
     verbose=False,
+    model_folder=MODEL_FOLDER,
     **kwargs,
 ):
     assert not kwargs, f"Unknown arguments: {kwargs}"
@@ -448,7 +456,7 @@ def main(
     ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
-    inferencer.load(model, vae, shift, controlnet_ckpt, verbose)
+    inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose)
 
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":
