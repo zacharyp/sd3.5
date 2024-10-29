@@ -583,7 +583,7 @@ class DismantledBlock(nn.Module):
             modulate(self.norm2(x), shift_mlp, scale_mlp)
         )
         x = x + mlp_
-        return x, (gate_msa, gate_msa2, gate_mlp, attn_, attn2_)
+        return x
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         assert not self.pre_only
@@ -607,11 +607,10 @@ def block_mixing(context, x, context_block, x_block, c):
     else:
         x_qkv, x_intermediates = x_block.pre_attention(x, c)
 
-    o = []
-    for t in range(3):
-        o.append(torch.cat((context_qkv[t], x_qkv[t]), dim=1))
-    q, k, v = tuple(o)
-
+    q, k, v = tuple(
+        torch.cat(tuple(qkv[i] for qkv in [context_qkv, x_qkv]), dim=1)
+        for i in range(3)
+    )
     attn = attention(q, k, v, x_block.attn.num_heads)
     context_attn, x_attn = (
         attn[:, : context_qkv[0].shape[1]],
@@ -626,6 +625,7 @@ def block_mixing(context, x, context_block, x_block, c):
     if x_block.x_block_self_attn:
         x_q2, x_k2, x_v2 = x_qkv2
         attn2 = attention(x_q2, x_k2, x_v2, x_block.attn2.num_heads)
+        x = x_block.post_attention_x(x_attn, attn2, *x_intermediates)
     else:
         x = x_block.post_attention(x_attn, *x_intermediates)
 
