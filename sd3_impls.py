@@ -4,12 +4,16 @@ import math
 import re
 
 import einops
+from safetensors import safe_open
 import torch
 from PIL import Image
 from tqdm import tqdm
+import numpy as np
+import torch.nn as nn
 
 from dit_embedder import ControlNetEmbedder
 from mmditx import MMDiTX
+from typing import Tuple
 
 #################################################################################################
 ### MMDiT Model Wrapping
@@ -61,7 +65,7 @@ class BaseModel(torch.nn.Module):
         dtype=torch.float32,
         file=None,
         prefix="",
-        load_control_model=False,
+        control_model_file=None,
         verbose=False,
     ):
         super().__init__()
@@ -115,35 +119,38 @@ class BaseModel(torch.nn.Module):
         )
         self.model_sampling = ModelSamplingDiscreteFlow(shift=shift)
         self.control_model = None
-        if load_control_model:
-            if verbose:
-                print("mmdit initializing ControlNetEmbedder")
-            hidden_size = 64 * depth
-            num_heads = depth
-            head_dim = hidden_size // num_heads
-            self.control_model = ControlNetEmbedder(
-                img_size=None,
-                patch_size=patch_size,
-                in_chans=16,
-                num_layers=depth,
-                attention_head_dim=head_dim,
-                num_attention_heads=num_heads,
-                pooled_projection_dim=adm_in_channels,
-            )
+        if control_model_file is not None:
+            # TODO check the depth of the controlnet from here
+            with safe_open(control_model_file, "rb") as control_ckpt_file:
+                if verbose:
+                    print("mmdit initializing ControlNetEmbedder")
+                hidden_size = 64 * depth
+                num_heads = depth
+                head_dim = hidden_size // num_heads
+                self.control_model = ControlNetEmbedder(
+                    img_size=None,
+                    patch_size=patch_size,
+                    in_chans=16,
+                    num_layers=8,
+                    attention_head_dim=head_dim,
+                    num_attention_heads=num_heads,
+                    pooled_projection_dim=adm_in_channels,
+                )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):
         dtype = self.get_dtype()
         timestep = self.model_sampling.timestep(sigma).float()
         controlnet_hidden_states = None
         if controlnet_cond is not None:
-            x_cond = self.diffusion_model.x_embedder(x).to(dtype)
             y_cond = y.to(dtype)
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
             if self.control_model.use_y_embedder:
                 y_cond = self.diffusion_model.y_embedder(y).to(dtype)
+            fake_y_cond = torch.load("/weka/home-brianf/pooled_projections.pt")
+            fake_hidden_states = torch.load("/weka/home-brianf/hidden_states.pt").to(dtype)
             controlnet_hidden_states = self.control_model(
-                x_cond, controlnet_cond, y_cond, 1, sigma
+                fake_hidden_states, controlnet_cond, fake_y_cond, 1, sigma
             )
         model_output = self.diffusion_model(
             x.to(dtype),
@@ -655,3 +662,72 @@ class SDVAE(torch.nn.Module):
         logvar = torch.clamp(logvar, -30.0, 20.0)
         std = torch.exp(0.5 * logvar)
         return mean + std * torch.randn_like(mean)
+
+class DiagonalGaussianDistribution:
+    def __init__(self, parameters, deterministic=False, chunk_dim: int = 1):
+        self.parameters = parameters
+        self.mean, self.logvar = torch.chunk(parameters, 2, dim=chunk_dim)
+        self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
+        self.deterministic = deterministic
+        self.std = torch.exp(0.5 * self.logvar)
+        self.var = torch.exp(self.logvar)
+        if self.deterministic:
+            self.var = self.std = torch.zeros_like(self.mean).to(
+                device=self.parameters.device
+            )
+
+    def sample(self):
+        x = self.mean + self.std * torch.randn(self.mean.shape).to(
+            device=self.parameters.device
+        )
+        return x
+
+    def kl(self, other=None):
+        if self.deterministic:
+            return torch.Tensor([0.0])
+        else:
+            if other is None:
+                return 0.5 * torch.sum(
+                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
+                    dim=list(range(1, self.mean.ndim)),
+                )
+            else:
+                return 0.5 * torch.sum(
+                    torch.pow(self.mean - other.mean, 2) / other.var
+                    + self.var / other.var
+                    - 1.0
+                    - self.logvar
+                    + other.logvar,
+                    dim=list(range(1, self.mean.ndim)),
+                )
+
+    def nll(self, sample, dims=[1, 2, 3]):
+        if self.deterministic:
+            return torch.Tensor([0.0])
+        logtwopi = np.log(2.0 * np.pi)
+        return 0.5 * torch.sum(
+            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
+            dim=dims,
+        )
+
+    def mode(self):
+        return self.mean
+
+
+class DiagonalGaussianRegularizer(nn.Module):
+    def __init__(self, sample: bool = True, chunk_dim: int = 1):
+        super().__init__()
+        self.sample = sample
+        self.chunk_dim = chunk_dim
+
+    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+        log = dict()
+        posterior = DiagonalGaussianDistribution(z, chunk_dim=self.chunk_dim)
+        if self.sample:
+            z = posterior.sample()
+        else:
+            z = posterior.mode()
+        kl_loss = posterior.kl()
+        kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
+        log["kl_loss"] = kl_loss
+        return z, log

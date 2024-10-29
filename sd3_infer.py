@@ -6,6 +6,7 @@
 # Also can have
 # - `sd3_vae.safetensors` (holds the VAE separately if needed)
 
+import pickle
 import datetime
 import math
 import os
@@ -19,7 +20,7 @@ from tqdm import tqdm
 
 import sd3_impls
 from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
-from sd3_impls import SDVAE, BaseModel, CFGDenoiser, SD3LatentFormat
+from sd3_impls import SDVAE, BaseModel, CFGDenoiser, DiagonalGaussianRegularizer, SD3LatentFormat
 
 #################################################################################################
 ### Wrappers for model parts
@@ -49,6 +50,7 @@ def load_into(f, model, prefix, device, dtype=None):
                 if dtype is not None:
                     tensor = tensor.to(dtype=dtype)
                 obj.requires_grad_(False)
+                print(f"Loading key '{key}' in safetensors file")
                 obj.set_(tensor)
             except Exception as e:
                 print(f"Failed to load key '{key}' in safetensors file: {e}")
@@ -126,14 +128,14 @@ class SD3:
                 prefix="model.diffusion_model.",
                 device="cpu",
                 dtype=torch.float16,
-                load_control_model=controlnet_ckpt is not None,
+                control_model_file=controlnet_ckpt,
                 verbose=verbose,
             ).eval()
             load_into(f, self.model, "model.", "cpu", torch.float16)
         if controlnet_ckpt is not None:
             with safe_open(controlnet_ckpt, framework="pt", device="cpu") as f:
                 load_into(f, self.model.control_model, "", "cpu")
-
+                self.model.control_model.pos_embed = self.model.control_model.pos_embed.to(dtype=torch.float32)
 
 class VAE:
     def __init__(self, model):
@@ -188,6 +190,10 @@ MODEL_FOLDER = "models"
 
 
 class SD3Inferencer:
+
+    def __init__(self):
+        self.verbose = False
+
     def print(self, txt):
         if self.verbose:
             print(txt)
@@ -328,6 +334,14 @@ class SD3Inferencer:
         self.print("Encoded")
         return latent
 
+    def vae_encode_pkl(self, pkl_location: str) -> torch.Tensor:
+        with open(pkl_location, "rb") as f:
+            data = pickle.load(f)
+        latent_pkl = data["vae_f8_ch16.cond.sft.latent"]
+        reg, _ = DiagonalGaussianRegularizer()(latent_pkl)
+        latent = SD3LatentFormat().process_in(reg)
+        return latent
+
     def vae_decode(self, latent) -> Image.Image:
         self.print("Decoding latent to image...")
         latent = latent.cuda()
@@ -374,6 +388,8 @@ class SD3Inferencer:
             controlnet_cond = self._image_to_latent(
                 controlnet_cond_image, width, height
             )
+            # HACK
+            # controlnet_cond = self.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)
@@ -464,6 +480,9 @@ def main(
     ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
+    # # HACK remove this
+    # inferencer.vae = VAE(vae or model)
+    # inferencer.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
     inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose)
 
     if isinstance(prompt, str):

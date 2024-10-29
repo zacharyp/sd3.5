@@ -297,7 +297,9 @@ class ControlNetEmbedder(nn.Module):
             for _ in range(num_layers)
         )
 
-        self.use_y_embedder = pooled_projection_dim != self.time_text_embed.text_embedder.linear_1.in_features
+        # self.use_y_embedder = pooled_projection_dim != self.time_text_embed.text_embedder.linear_1.in_features
+        # HACK
+        self.use_y_embedder = True
 
         self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
@@ -321,16 +323,16 @@ class ControlNetEmbedder(nn.Module):
         timestep: Optional[Tensor] = None,
     ) -> Tuple[Tensor, List[Tensor]]:
 
-        temb = self.time_text_embed(timestep, pooled_projections)
-
+        hidden_states = self.pos_embed(hidden_states)
+        timestep = timestep * 1000
+        temb = self.time_text_embed(timestep.to(dtype=torch.float32), pooled_projections)
         hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
 
         block_res_samples = ()
 
         for block in self.transformer_blocks:
             out = block(hidden_states, temb)
-            hidden_states = out
-            block_res_samples += (hidden_states,)
+            block_res_samples += (out,)
 
         controlnet_block_res_samples = ()
         for block_res_sample, controlnet_block in zip(
