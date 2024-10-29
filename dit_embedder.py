@@ -276,7 +276,6 @@ class ControlNetEmbedder(nn.Module):
         pooled_projection_dim: int,
         num_layers: int,
         pos_embed_max_size: Optional[int] = None,
-        resize_cond_if_needed: bool = False,
     ):
         super().__init__()
         self.inner_dim = num_attention_heads * attention_head_dim
@@ -297,7 +296,8 @@ class ControlNetEmbedder(nn.Module):
             )
             for _ in range(num_layers)
         )
-        self.resize_cond_if_needed = resize_cond_if_needed
+
+        self.use_y_embedder = pooled_projection_dim != self.time_text_embed.text_embedder.linear_1.in_features
 
         self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):

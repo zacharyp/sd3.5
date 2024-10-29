@@ -137,9 +137,11 @@ class BaseModel(torch.nn.Module):
         controlnet_hidden_states = None
         if controlnet_cond is not None:
             x_cond = self.diffusion_model.x_embedder(x).to(dtype)
+            y_cond = y.to(dtype)
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
-            y_cond = self.diffusion_model.y_embedder(y).to(dtype)
+            if self.control_model.use_y_embedder:
+                y_cond = self.diffusion_model.y_embedder(y).to(dtype)
             controlnet_hidden_states = self.control_model(
                 x_cond, controlnet_cond, y_cond, 1, sigma
             )
