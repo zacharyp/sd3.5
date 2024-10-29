@@ -219,9 +219,16 @@ class SD3Inferencer:
         self.vae = VAE(vae or model)
         print("Models loaded.")
 
-    def get_empty_latent(self, width, height):
+    def get_empty_latent(self, batch_size, width, height, seed, device="cuda"):
         self.print("Prep an empty latent...")
-        return torch.ones(1, 16, height // 8, width // 8, device="cpu") * 0.0609
+        shape = (batch_size, 16, height // 8, width // 8)
+        latents = torch.zeros(shape, device=device)
+        for i in range(shape[0]):
+            prng = torch.Generator(device=device).manual_seed(int(seed + i))
+            latents[i] = torch.randn(
+                shape[1:], generator=prng, device=device
+            )
+        return latents
 
     def get_sigmas(self, sampling, steps):
         start = sampling.timestep(sampling.sigma_max)
@@ -361,7 +368,8 @@ class SD3Inferencer:
         if init_image:
             latent = self._image_to_latent(init_image, width, height)
         else:
-            latent = self.get_empty_latent(width, height)
+            latent = self.get_empty_latent(1, width, height, seed, "cpu")
+            latent = latent.cuda()
         if controlnet_cond_image:
             controlnet_cond = self._image_to_latent(
                 controlnet_cond_image, width, height
