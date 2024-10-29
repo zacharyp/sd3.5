@@ -121,21 +121,21 @@ class BaseModel(torch.nn.Module):
         self.control_model = None
         if control_model_file is not None:
             # TODO check the depth of the controlnet from here
-            with safe_open(control_model_file, "rb") as control_ckpt_file:
-                if verbose:
-                    print("mmdit initializing ControlNetEmbedder")
-                hidden_size = 64 * depth
-                num_heads = depth
-                head_dim = hidden_size // num_heads
-                self.control_model = ControlNetEmbedder(
-                    img_size=None,
-                    patch_size=patch_size,
-                    in_chans=16,
-                    num_layers=8,
-                    attention_head_dim=head_dim,
-                    num_attention_heads=num_heads,
-                    pooled_projection_dim=adm_in_channels,
-                )
+            if verbose:
+                print("mmdit initializing ControlNetEmbedder")
+            hidden_size = 64 * depth
+            num_heads = depth
+            head_dim = hidden_size // num_heads
+            self.control_model = ControlNetEmbedder(
+                img_size=None,
+                patch_size=patch_size,
+                in_chans=16,
+                # HACK
+                num_layers=8,
+                attention_head_dim=head_dim,
+                num_attention_heads=num_heads,
+                pooled_projection_dim=adm_in_channels,
+            )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):
         dtype = self.get_dtype()
@@ -147,10 +147,11 @@ class BaseModel(torch.nn.Module):
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
             if self.control_model.use_y_embedder:
                 y_cond = self.diffusion_model.y_embedder(y).to(dtype)
-            fake_y_cond = torch.load("/weka/home-brianf/pooled_projections.pt")
-            fake_hidden_states = torch.load("/weka/home-brianf/hidden_states.pt").to(dtype)
+            # HACK
+            # fake_y_cond = torch.load("/weka/home-brianf/pooled_projections.pt")
+            # fake_hidden_states = torch.load("/weka/home-brianf/hidden_states.pt").to(dtype)
             controlnet_hidden_states = self.control_model(
-                fake_hidden_states, controlnet_cond, fake_y_cond, 1, sigma
+                x, controlnet_cond, y_cond, 1, sigma
             )
         model_output = self.diffusion_model(
             x.to(dtype),

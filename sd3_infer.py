@@ -50,7 +50,6 @@ def load_into(f, model, prefix, device, dtype=None):
                 if dtype is not None:
                     tensor = tensor.to(dtype=dtype)
                 obj.requires_grad_(False)
-                print(f"Loading key '{key}' in safetensors file")
                 obj.set_(tensor)
             except Exception as e:
                 print(f"Failed to load key '{key}' in safetensors file: {e}")
