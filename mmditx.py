@@ -883,12 +883,12 @@ class MMDiTX(nn.Module):
         # context is B, L', D
         # x is B, L, D
         for i, block in enumerate(self.joint_blocks):
+            context, x = block(context, x, c=c_mod)
             if controlnet_hidden_states is not None:
                 controlnet_block_interval = len(self.joint_blocks) // len(
                     controlnet_hidden_states
                 )
                 x = x + controlnet_hidden_states[i // controlnet_block_interval]
-            context, x = block(context, x, c=c_mod)
 
         x = self.final_layer(x, c_mod)  # (N, T, patch_size ** 2 * out_channels)
         return x

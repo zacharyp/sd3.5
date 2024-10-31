@@ -125,16 +125,16 @@ class SD3:
                 shift=shift,
                 file=f,
                 prefix="model.diffusion_model.",
-                device="cpu",
+                device="cuda",
                 dtype=torch.float16,
                 control_model_file=controlnet_ckpt,
                 verbose=verbose,
             ).eval()
-            load_into(f, self.model, "model.", "cpu", torch.float16)
+            load_into(f, self.model, "model.", "cuda", torch.float16)
         if controlnet_ckpt is not None:
             with safe_open(controlnet_ckpt, framework="pt", device="cpu") as f:
-                load_into(f, self.model.control_model, "", "cpu")
-                self.model.control_model.pos_embed = self.model.control_model.pos_embed.to(dtype=torch.float32)
+                self.model.control_model = self.model.control_model.to(device="cuda", dtype=torch.float16)
+                load_into(f, self.model.control_model, "", "cuda", dtype=torch.float16)
 
 class VAE:
     def __init__(self, model):
@@ -336,9 +336,9 @@ class SD3Inferencer:
     def vae_encode_pkl(self, pkl_location: str) -> torch.Tensor:
         with open(pkl_location, "rb") as f:
             data = pickle.load(f)
-        latent_pkl = data["vae_f8_ch16.cond.sft.latent"]
-        reg, _ = DiagonalGaussianRegularizer()(latent_pkl)
-        latent = SD3LatentFormat().process_in(reg)
+        latent = data["vae_f8_ch16.cond.sft.latent"]
+        latent, _ = DiagonalGaussianRegularizer()(latent)
+        latent = SD3LatentFormat().process_in(latent)
         return latent
 
     def vae_decode(self, latent) -> Image.Image:
@@ -384,11 +384,11 @@ class SD3Inferencer:
             latent = self.get_empty_latent(1, width, height, seed, "cpu")
             latent = latent.cuda()
         if controlnet_cond_image:
-            controlnet_cond = self._image_to_latent(
-                controlnet_cond_image, width, height
-            )
+            # controlnet_cond = self._image_to_latent(
+            #     controlnet_cond_image, width, height
+            # )
             # HACK
-            # controlnet_cond = self.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
+            controlnet_cond = self.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)
@@ -479,10 +479,13 @@ def main(
     ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
-    # # HACK remove this
+    # HACK remove this, for rapid testing
     # inferencer.vae = VAE(vae or model)
     # inferencer.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
+    # inferencer._image_to_latent(controlnet_cond_image, 1024, 1024)
+
     inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose)
+
 
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":

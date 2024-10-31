@@ -148,7 +148,7 @@ class BaseModel(torch.nn.Module):
             if self.control_model.use_y_embedder:
                 y_cond = self.diffusion_model.y_embedder(y).to(dtype)
             # HACK
-            # fake_y_cond = torch.load("/weka/home-brianf/pooled_projections.pt")
+            fake_y_cond = torch.load("/weka/home-brianf/pooled_projections.pt")
             # fake_hidden_states = torch.load("/weka/home-brianf/hidden_states.pt").to(dtype)
             controlnet_hidden_states = self.control_model(
                 x, controlnet_cond, y_cond, 1, sigma

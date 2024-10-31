@@ -9,7 +9,6 @@ from torch import Tensor
 
 from mmditx import DismantledBlock, PatchEmbed
 
-
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
 
