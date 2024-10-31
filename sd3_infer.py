@@ -20,7 +20,13 @@ from tqdm import tqdm
 
 import sd3_impls
 from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
-from sd3_impls import SDVAE, BaseModel, CFGDenoiser, DiagonalGaussianRegularizer, SD3LatentFormat
+from sd3_impls import (
+    SDVAE,
+    BaseModel,
+    CFGDenoiser,
+    DiagonalGaussianRegularizer,
+    SD3LatentFormat,
+)
 
 #################################################################################################
 ### Wrappers for model parts
@@ -110,16 +116,16 @@ T5_CONFIG = {
 
 
 class T5XXL:
-    def __init__(self, model_folder: str):
+    def __init__(self, model_folder: str, device: str = "cpu"):
         with safe_open(
             f"{model_folder}/t5xxl.safetensors", framework="pt", device="cpu"
         ) as f:
-            self.model = T5XXLModel(T5_CONFIG, device="cpu", dtype=torch.float32)
-            load_into(f, self.model.transformer, "", "cpu", torch.float32)
+            self.model = T5XXLModel(T5_CONFIG, device=device, dtype=torch.float32)
+            load_into(f, self.model.transformer, "", device, torch.float32)
 
 
 class SD3:
-    def __init__(self, model, shift, controlnet_ckpt=None, verbose=False):
+    def __init__(self, model, shift, controlnet_ckpt=None, verbose=False, device = "cpu"):
         with safe_open(model, framework="pt", device="cpu") as f:
             self.model = BaseModel(
                 shift=shift,
@@ -132,9 +138,12 @@ class SD3:
             ).eval()
             load_into(f, self.model, "model.", "cuda", torch.float16)
         if controlnet_ckpt is not None:
-            with safe_open(controlnet_ckpt, framework="pt", device="cpu") as f:
-                self.model.control_model = self.model.control_model.to(device="cuda", dtype=torch.float16)
-                load_into(f, self.model.control_model, "", "cuda", dtype=torch.float16)
+            with safe_open(controlnet_ckpt, framework="pt", device=device) as f:
+                self.model.control_model = self.model.control_model.to(
+                    device=device, dtype=torch.float16
+                )
+                load_into(f, self.model.control_model, "", device, dtype=torch.float16)
+
 
 class VAE:
     def __init__(self, model):
@@ -203,7 +212,8 @@ class SD3Inferencer:
         vae=VAEFile,
         shift=SHIFT,
         controlnet_ckpt=None,
-        model_folder:str=MODEL_FOLDER,
+        model_folder: str = MODEL_FOLDER,
+        text_encoder_device: str = "cpu",
         verbose=False,
     ):
         self.verbose = verbose
@@ -212,14 +222,14 @@ class SD3Inferencer:
         # check https://github.com/Stability-AI/StableSwarmUI/blob/master/src/Utils/CliplikeTokenizer.cs
         # (T5 tokenizer is different though)
         self.tokenizer = SD3Tokenizer()
+        print("Loading Google T5-v1-XXL...")
+        self.t5xxl = T5XXL(model_folder, "cuda")
         print("Loading OpenAI CLIP L...")
         self.clip_l = ClipL(model_folder)
         print("Loading OpenCLIP bigG...")
         self.clip_g = ClipG(model_folder)
-        print("Loading Google T5-v1-XXL...")
-        self.t5xxl = T5XXL(model_folder)
         print(f"Loading SD3 model {os.path.basename(model)}...")
-        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose)
+        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, "cuda")
         print("Loading VAE model...")
         self.vae = VAE(vae or model)
         print("Models loaded.")
@@ -230,9 +240,7 @@ class SD3Inferencer:
         latents = torch.zeros(shape, device=device)
         for i in range(shape[0]):
             prng = torch.Generator(device=device).manual_seed(int(seed + i))
-            latents[i] = torch.randn(
-                shape[1:], generator=prng, device=device
-            )
+            latents[i] = torch.randn(shape[1:], generator=prng, device=device)
         return latents
 
     def get_sigmas(self, sampling, steps):
@@ -384,11 +392,13 @@ class SD3Inferencer:
             latent = self.get_empty_latent(1, width, height, seed, "cpu")
             latent = latent.cuda()
         if controlnet_cond_image:
-            # controlnet_cond = self._image_to_latent(
-            #     controlnet_cond_image, width, height
-            # )
+            controlnet_cond = self._image_to_latent(
+                controlnet_cond_image, width, height
+            )
             # HACK
-            controlnet_cond = self.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
+            # controlnet_cond = self.vae_encode_pkl(
+            #     "/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl"
+            # )
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)
@@ -462,6 +472,7 @@ def main(
     denoise=DENOISE,
     verbose=False,
     model_folder=MODEL_FOLDER,
+    text_encoder_device="cpu",
     **kwargs,
 ):
     assert not kwargs, f"Unknown arguments: {kwargs}"
@@ -479,13 +490,15 @@ def main(
     ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
+
     # HACK remove this, for rapid testing
     # inferencer.vae = VAE(vae or model)
-    # inferencer.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
+    # inferencer.vae_encode_pkl(
+    #     "/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl"
+    # )
     # inferencer._image_to_latent(controlnet_cond_image, 1024, 1024)
 
-    inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose)
-
+    inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose, text_encoder_device)
 
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":
