@@ -7,7 +7,8 @@ import torch.nn as nn
 from einops import rearrange
 from torch import Tensor
 
-from mmditx import DismantledBlock, PatchEmbed
+from mmditx import DismantledBlock, PatchEmbed, VectorEmbedder, TimestepEmbedder
+
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
@@ -297,7 +298,7 @@ class ControlNetEmbedder(nn.Module):
         )
 
         # self.use_y_embedder = pooled_projection_dim != self.time_text_embed.text_embedder.linear_1.in_features
-        # HACK
+        # TODO double check this logic when 8b
         self.use_y_embedder = True
 
         self.controlnet_blocks = nn.ModuleList([])
@@ -315,35 +316,31 @@ class ControlNetEmbedder(nn.Module):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        controlnet_cond: Tensor,
-        pooled_projections: Tensor,
-        conditioning_scale: int = 1,
-        timestep: Optional[Tensor] = None,
+        x: Tensor,
+        x_cond: Tensor,
+        y: Tensor,
+        scale: int = 1,
+        timesteps: Optional[Tensor] = None,
     ) -> Tuple[Tensor, List[Tensor]]:
 
-        hidden_states = self.pos_embed(hidden_states)
-        timestep = timestep * 1000
-        temb = self.time_text_embed(timestep.to(dtype=torch.float32), pooled_projections)
-        hidden_states = hidden_states + self.pos_embed_input(controlnet_cond)
+        x = self.pos_embed(x)
+        timesteps = timesteps * 1000
+        temb = self.time_text_embed(timesteps.to(dtype=torch.float32), y)
+        x = x + self.pos_embed_input(x_cond)
 
-        block_res_samples = ()
+        block_out = ()
 
         for block in self.transformer_blocks:
-            out = block(hidden_states, temb)
-            block_res_samples += (out,)
+            out = block(x, temb)
+            block_out += (out,)
 
-        controlnet_block_res_samples = ()
-        for block_res_sample, controlnet_block in zip(
-            block_res_samples, self.controlnet_blocks
+        x_out = ()
+        for out, controlnet_block in zip(
+            block_out, self.controlnet_blocks
         ):
-            block_res_sample = controlnet_block(block_res_sample)
-            controlnet_block_res_samples = controlnet_block_res_samples + (
-                block_res_sample,
-            )
+            out = controlnet_block(out)
+            x_out = x_out + (out,)
 
         # scale the controlnet outputs
-        controlnet_block_res_samples = [
-            sample * conditioning_scale for sample in controlnet_block_res_samples
-        ]
-        return controlnet_block_res_samples
+        x_out = [sample * scale for sample in x_out]
+        return x_out
