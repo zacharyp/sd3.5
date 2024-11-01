@@ -116,12 +116,12 @@ T5_CONFIG = {
 
 
 class T5XXL:
-    def __init__(self, model_folder: str, device: str = "cpu"):
+    def __init__(self, model_folder: str, device: str = "cpu", dtype=torch.float32):
         with safe_open(
             f"{model_folder}/t5xxl.safetensors", framework="pt", device="cpu"
         ) as f:
-            self.model = T5XXLModel(T5_CONFIG, device=device, dtype=torch.float32)
-            load_into(f, self.model.transformer, "", device, torch.float32)
+            self.model = T5XXLModel(T5_CONFIG, device=device, dtype=dtype)
+            load_into(f, self.model.transformer, "", device, dtype)
 
 
 class SD3:
@@ -146,13 +146,13 @@ class SD3:
 
 
 class VAE:
-    def __init__(self, model):
+    def __init__(self, model, dtype: torch.dtype = torch.float16):
         with safe_open(model, framework="pt", device="cpu") as f:
-            self.model = SDVAE(device="cpu", dtype=torch.float16).eval().cpu()
+            self.model = SDVAE(device="cpu", dtype=dtype).eval().cpu()
             prefix = ""
             if any(k.startswith("first_stage_model.") for k in f.keys()):
                 prefix = "first_stage_model."
-            load_into(f, self.model, prefix, "cpu", torch.float16)
+            load_into(f, self.model, prefix, "cpu", dtype)
 
 
 #################################################################################################
@@ -223,7 +223,7 @@ class SD3Inferencer:
         # (T5 tokenizer is different though)
         self.tokenizer = SD3Tokenizer()
         print("Loading Google T5-v1-XXL...")
-        self.t5xxl = T5XXL(model_folder, "cuda")
+        self.t5xxl = T5XXL(model_folder, "cuda", torch.float32)
         print("Loading OpenAI CLIP L...")
         self.clip_l = ClipL(model_folder)
         print("Loading OpenCLIP bigG...")
@@ -326,16 +326,19 @@ class SD3Inferencer:
         self.print("Sampling done")
         return latent
 
-    def vae_encode(self, image) -> torch.Tensor:
+    def vae_encode(self, image, controlnet_cond: bool = False) -> torch.Tensor:
         self.print("Encoding image to latent...")
         image = image.convert("RGB")
         image_np = np.array(image).astype(np.float32) / 255.0
         image_np = np.moveaxis(image_np, 2, 0)
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
-        image_torch = torch.from_numpy(batch_images)
-        image_torch = 2.0 * image_torch - 1.0
+        image_torch = torch.from_numpy(batch_images).cuda()
+        if not controlnet_cond:
+            image_torch = 2.0 * image_torch - 1.0
         image_torch = image_torch.cuda()
         self.vae.model = self.vae.model.cuda()
+        if controlnet_cond:
+            image_torch = image_torch * 255
         latent = self.vae.model.encode(image_torch).cpu()
         self.vae.model = self.vae.model.cpu()
         self.print("Encoded")
@@ -363,10 +366,10 @@ class SD3Inferencer:
         self.print("Decoded")
         return out_image
 
-    def _image_to_latent(self, image, width, height):
+    def _image_to_latent(self, image, width, height, controlnet_cond: bool = False):
         image_data = Image.open(image)
         image_data = image_data.resize((width, height), Image.LANCZOS)
-        latent = self.vae_encode(image_data)
+        latent = self.vae_encode(image_data, controlnet_cond)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -393,12 +396,8 @@ class SD3Inferencer:
             latent = latent.cuda()
         if controlnet_cond_image:
             controlnet_cond = self._image_to_latent(
-                controlnet_cond_image, width, height
+                controlnet_cond_image, width, height, True
             )
-            # HACK
-            # controlnet_cond = self.vae_encode_pkl(
-            #     "/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl"
-            # )
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)
@@ -490,13 +489,6 @@ def main(
     ).get("sampler", "dpmpp_2m")
 
     inferencer = SD3Inferencer()
-
-    # HACK remove this, for rapid testing
-    # inferencer.vae = VAE(vae or model)
-    # inferencer.vae_encode_pkl(
-    #     "/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl"
-    # )
-    # inferencer._image_to_latent(controlnet_cond_image, 1024, 1024)
 
     inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose, text_encoder_device)
 
