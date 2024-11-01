@@ -134,7 +134,9 @@ class BaseModel(torch.nn.Module):
                 num_layers=8,
                 attention_head_dim=head_dim,
                 num_attention_heads=num_heads,
-                pooled_projection_dim=adm_in_channels,
+                adm_in_channels=adm_in_channels,
+                device=device,
+                dtype=dtype,
             )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):

@@ -33,11 +33,14 @@ from sd3_impls import (
 #################################################################################################
 
 
-def load_into(f, model, prefix, device, dtype=None):
+def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
     """Just a debugging-friendly hack to apply the weights in a safetensors file to the pytorch module."""
-    for key in f.keys():
-        if key.startswith(prefix) and not key.startswith("loss."):
-            path = key[len(prefix) :].split(".")
+    for key in ckpt.keys():
+        model_key = key
+        if remap is not None and key in remap:
+            model_key = remap[key]
+        if model_key.startswith(prefix) and not model_key.startswith("loss."):
+            path = model_key[len(prefix) :].split(".")
             obj = model
             for p in path:
                 if obj is list:
@@ -46,13 +49,13 @@ def load_into(f, model, prefix, device, dtype=None):
                     obj = getattr(obj, p, None)
                     if obj is None:
                         print(
-                            f"Skipping key '{key}' in safetensors file as '{p}' does not exist in python model"
+                            f"Skipping key '{model_key}' in safetensors file as '{p}' does not exist in python model"
                         )
                         break
             if obj is None:
                 continue
             try:
-                tensor = f.get_tensor(key).to(device=device)
+                tensor = ckpt.get_tensor(key).to(device=device)
                 if dtype is not None:
                     tensor = tensor.to(dtype=dtype)
                 obj.requires_grad_(False)
@@ -124,8 +127,22 @@ class T5XXL:
             load_into(f, self.model.transformer, "", device, dtype)
 
 
+CONTROLNET_MAP = {
+    "time_text_embed.timestep_embedder.linear_1.bias": "t_embedder.mlp.0.bias",
+    "time_text_embed.timestep_embedder.linear_1.weight": "t_embedder.mlp.0.weight",
+    "time_text_embed.timestep_embedder.linear_2.bias": "t_embedder.mlp.2.bias",
+    "time_text_embed.timestep_embedder.linear_2.weight": "t_embedder.mlp.2.weight",
+    "pos_embed.proj.bias": "x_embedder.proj.bias",
+    "pos_embed.proj.weight": "x_embedder.proj.weight",
+    "time_text_embed.text_embedder.linear_1.bias": "y_embedder.mlp.0.bias",
+    "time_text_embed.text_embedder.linear_1.weight": "y_embedder.mlp.0.weight",
+    "time_text_embed.text_embedder.linear_2.bias": "y_embedder.mlp.2.bias",
+    "time_text_embed.text_embedder.linear_2.weight": "y_embedder.mlp.2.weight",
+}
+
+
 class SD3:
-    def __init__(self, model, shift, controlnet_ckpt=None, verbose=False, device = "cpu"):
+    def __init__(self, model, shift, controlnet_ckpt=None, verbose=False, device="cpu"):
         with safe_open(model, framework="pt", device="cpu") as f:
             self.model = BaseModel(
                 shift=shift,
@@ -142,7 +159,14 @@ class SD3:
                 self.model.control_model = self.model.control_model.to(
                     device=device, dtype=torch.float16
                 )
-                load_into(f, self.model.control_model, "", device, dtype=torch.float16)
+                load_into(
+                    f,
+                    self.model.control_model,
+                    "",
+                    device,
+                    dtype=torch.float16,
+                    remap=CONTROLNET_MAP,
+                )
 
 
 class VAE:
@@ -490,7 +514,9 @@ def main(
 
     inferencer = SD3Inferencer()
 
-    inferencer.load(model, vae, shift, controlnet_ckpt, model_folder, verbose, text_encoder_device)
+    inferencer.load(
+        model, vae, shift, controlnet_ckpt, model_folder, verbose, text_encoder_device
+    )
 
     if isinstance(prompt, str):
         if os.path.splitext(prompt)[-1] == ".txt":
