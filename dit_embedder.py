@@ -46,10 +46,6 @@ class ControlNetEmbedder(nn.Module):
             for _ in range(num_layers)
         )
 
-        # self.use_y_embedder = pooled_projection_dim != self.time_text_embed.text_embedder.linear_1.in_features
-        # TODO double check this logic when 8b
-        self.use_y_embedder = True
-
         self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
             controlnet_block = nn.Linear(self.hidden_size, self.hidden_size)

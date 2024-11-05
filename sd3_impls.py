@@ -65,7 +65,7 @@ class BaseModel(torch.nn.Module):
         dtype=torch.float32,
         file=None,
         prefix="",
-        control_model_file=None,
+        control_model_ckpt=None,
         verbose=False,
     ):
         super().__init__()
@@ -119,10 +119,20 @@ class BaseModel(torch.nn.Module):
         )
         self.model_sampling = ModelSamplingDiscreteFlow(shift=shift)
         self.control_model = None
-        if control_model_file is not None:
-            # TODO check the depth of the controlnet from here
+        if control_model_ckpt is not None:
+            n_controlnet_layers = len(
+                list(
+                    filter(
+                        re.compile(".*.attn.proj.weight").match,
+                        control_model_ckpt.keys(),
+                    )
+                )
+            )
+
             if verbose:
-                print("mmdit initializing ControlNetEmbedder")
+                print(
+                    f"Initializing ControlNetEmbedder with {n_controlnet_layers} layers"
+                )
             hidden_size = 64 * depth
             num_heads = depth
             head_dim = hidden_size // num_heads
@@ -130,14 +140,13 @@ class BaseModel(torch.nn.Module):
                 img_size=None,
                 patch_size=patch_size,
                 in_chans=16,
-                # HACK
-                num_layers=8,
+                num_layers=n_controlnet_layers,
                 attention_head_dim=head_dim,
                 num_attention_heads=num_heads,
                 adm_in_channels=adm_in_channels,
                 device=device,
                 dtype=dtype,
-            )
+            ).to(device=device, dtype=dtype)
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, controlnet_cond=None):
         dtype = self.get_dtype()
@@ -147,11 +156,9 @@ class BaseModel(torch.nn.Module):
             y_cond = y.to(dtype)
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
-            if self.control_model.use_y_embedder:
-                y_cond = self.diffusion_model.y_embedder(y).to(dtype)
-            # HACK
-            fake_y_cond = torch.load("/weka/home-brianf/pooled_projections.pt")
-            # fake_hidden_states = torch.load("/weka/home-brianf/hidden_states.pt").to(dtype)
+
+            # Some ControlNets don't use the y_cond input, so we need to check if it's needed.
+            y_cond = self.diffusion_model.y_embedder(y).to(dtype)
             controlnet_hidden_states = self.control_model(
                 x, controlnet_cond, y_cond, 1, sigma
             )
@@ -665,6 +672,7 @@ class SDVAE(torch.nn.Module):
         logvar = torch.clamp(logvar, -30.0, 20.0)
         std = torch.exp(0.5 * logvar)
         return mean + std * torch.randn_like(mean)
+
 
 class DiagonalGaussianDistribution:
     def __init__(self, parameters, deterministic=False, chunk_dim: int = 1):

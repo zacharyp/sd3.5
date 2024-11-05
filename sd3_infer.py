@@ -142,31 +142,41 @@ CONTROLNET_MAP = {
 
 
 class SD3:
-    def __init__(self, model, shift, controlnet_ckpt=None, verbose=False, device="cpu"):
+    def __init__(
+        self, model, shift, control_model_file=None, verbose=False, device="cpu"
+    ):
         with safe_open(model, framework="pt", device="cpu") as f:
+            control_model_ckpt = None
+            if control_model_file is not None:
+                control_model_ckpt = safe_open(
+                    control_model_file, framework="pt", device=device
+                )
             self.model = BaseModel(
                 shift=shift,
                 file=f,
                 prefix="model.diffusion_model.",
                 device="cuda",
                 dtype=torch.float16,
-                control_model_file=controlnet_ckpt,
+                control_model_ckpt=control_model_ckpt,
                 verbose=verbose,
             ).eval()
             load_into(f, self.model, "model.", "cuda", torch.float16)
-        if controlnet_ckpt is not None:
-            with safe_open(controlnet_ckpt, framework="pt", device=device) as f:
-                self.model.control_model = self.model.control_model.to(
-                    device=device, dtype=torch.float16
-                )
-                load_into(
-                    f,
-                    self.model.control_model,
-                    "",
-                    device,
-                    dtype=torch.float16,
-                    remap=CONTROLNET_MAP,
-                )
+        if control_model_file is not None:
+            self.model.control_model = self.model.control_model.to(
+                device=device, dtype=torch.float16
+            )
+            control_model_ckpt = safe_open(
+                control_model_file, framework="pt", device=device
+            )
+            load_into(
+                control_model_ckpt,
+                self.model.control_model,
+                "",
+                device,
+                dtype=torch.float16,
+                remap=CONTROLNET_MAP,
+            )
+        control_model_ckpt = None
 
 
 class VAE:
