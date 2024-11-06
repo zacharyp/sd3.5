@@ -129,13 +129,14 @@ class BaseModel(torch.nn.Module):
                 )
             )
 
-            if verbose:
-                print(
-                    f"Initializing ControlNetEmbedder with {n_controlnet_layers} layers"
-                )
             hidden_size = 64 * depth
             num_heads = depth
             head_dim = hidden_size // num_heads
+            pooled_projection_size = control_model_ckpt.get_tensor('time_text_embed.text_embedder.linear_1.weight').shape[1]
+            if verbose:
+                print(
+                    f"Initializing ControlNetEmbedder with {n_controlnet_layers} layers, y_in of {pooled_projection_size}"
+                )
             self.control_model = ControlNetEmbedder(
                 img_size=None,
                 patch_size=patch_size,
@@ -143,7 +144,7 @@ class BaseModel(torch.nn.Module):
                 num_layers=n_controlnet_layers,
                 attention_head_dim=head_dim,
                 num_attention_heads=num_heads,
-                adm_in_channels=adm_in_channels,
+                pooled_projection_size=pooled_projection_size,
                 device=device,
                 dtype=dtype,
             ).to(device=device, dtype=dtype)
@@ -158,7 +159,8 @@ class BaseModel(torch.nn.Module):
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
 
             # Some ControlNets don't use the y_cond input, so we need to check if it's needed.
-            y_cond = self.diffusion_model.y_embedder(y).to(dtype)
+            if y_cond.shape[-1] != self.control_model.y_embedder.mlp[0].in_features:
+                y_cond = self.diffusion_model.y_embedder(y).to(dtype)
             controlnet_hidden_states = self.control_model(
                 x, controlnet_cond, y_cond, 1, sigma
             )

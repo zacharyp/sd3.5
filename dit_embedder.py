@@ -18,7 +18,7 @@ class ControlNetEmbedder(nn.Module):
         in_chans: int,
         attention_head_dim: int,
         num_attention_heads: int,
-        adm_in_channels: int,
+        pooled_projection_size: int,
         num_layers: int,
         device: torch.device,
         dtype: torch.dtype,
@@ -36,7 +36,7 @@ class ControlNetEmbedder(nn.Module):
 
         self.t_embedder = TimestepEmbedder(self.hidden_size, dtype=dtype, device=device)
         self.y_embedder = VectorEmbedder(
-            adm_in_channels, self.hidden_size, dtype, device
+            pooled_projection_size, self.hidden_size, dtype, device
         )
 
         self.transformer_blocks = nn.ModuleList(

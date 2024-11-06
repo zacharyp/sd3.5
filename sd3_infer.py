@@ -59,6 +59,8 @@ def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
                 if dtype is not None:
                     tensor = tensor.to(dtype=dtype)
                 obj.requires_grad_(False)
+                if obj.shape != tensor.shape:
+                    print(f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}")
                 obj.set_(tensor)
             except Exception as e:
                 print(f"Failed to load key '{key}' in safetensors file: {e}")
