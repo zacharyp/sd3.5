@@ -129,7 +129,8 @@ def main(
             denoise if init_image else 1.0,
         )
         image = inferencer.vae_decode(sampled_latent)
-        save_path = os.path.join(out_dir, f"{i:06d}.png")
+        k = sample["__key__"]
+        save_path = os.path.join(out_dir, f"{k}.png")
         image.save(save_path)
 
 
