@@ -251,6 +251,7 @@ class SD3Inferencer:
         model_folder: str = MODEL_FOLDER,
         text_encoder_device: str = "cpu",
         verbose=False,
+        load_tokenizers: bool = True
     ):
         self.verbose = verbose
         print("Loading tokenizers...")
@@ -258,12 +259,13 @@ class SD3Inferencer:
         # check https://github.com/Stability-AI/StableSwarmUI/blob/master/src/Utils/CliplikeTokenizer.cs
         # (T5 tokenizer is different though)
         self.tokenizer = SD3Tokenizer()
-        print("Loading Google T5-v1-XXL...")
-        self.t5xxl = T5XXL(model_folder, "cuda", torch.float32)
-        print("Loading OpenAI CLIP L...")
-        self.clip_l = ClipL(model_folder)
-        print("Loading OpenCLIP bigG...")
-        self.clip_g = ClipG(model_folder)
+        if load_tokenizers:
+            print("Loading Google T5-v1-XXL...")
+            self.t5xxl = T5XXL(model_folder, text_encoder_device, torch.float32)
+            print("Loading OpenAI CLIP L...")
+            self.clip_l = ClipL(model_folder)
+            print("Loading OpenCLIP bigG...")
+            self.clip_g = ClipG(model_folder)
         print(f"Loading SD3 model {os.path.basename(model)}...")
         self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, "cuda")
         print("Loading VAE model...")
@@ -380,11 +382,9 @@ class SD3Inferencer:
         self.print("Encoded")
         return latent
 
-    def vae_encode_pkl(self, pkl_location: str) -> torch.Tensor:
-        with open(pkl_location, "rb") as f:
-            data = pickle.load(f)
-        latent = data["vae_f8_ch16.cond.sft.latent"]
-        latent, _ = DiagonalGaussianRegularizer()(latent)
+    def vae_encode_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
+        tensor = tensor.unsqueeze(0)
+        latent, _ = DiagonalGaussianRegularizer()(tensor)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -569,4 +569,5 @@ def main(
     )
 
 
-fire.Fire(main)
+if __name__ == "__main__":
+    fire.Fire(main)
