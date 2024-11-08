@@ -869,6 +869,7 @@ class MMDiTX(nn.Module):
         x: torch.Tensor,
         c_mod: torch.Tensor,
         context: Optional[torch.Tensor] = None,
+        skip_layers: Optional[List] = [],
         controlnet_hidden_states: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if self.register_length > 0:
@@ -883,6 +884,8 @@ class MMDiTX(nn.Module):
         # context is B, L', D
         # x is B, L, D
         for i, block in enumerate(self.joint_blocks):
+            if i in skip_layers:
+                continue
             context, x = block(context, x, c=c_mod)
             if controlnet_hidden_states is not None:
                 controlnet_block_interval = len(self.joint_blocks) // len(
@@ -900,6 +903,7 @@ class MMDiTX(nn.Module):
         y: Optional[torch.Tensor] = None,
         context: Optional[torch.Tensor] = None,
         controlnet_hidden_states: Optional[torch.Tensor] = None,
+        skip_layers: Optional[List] = [],
     ) -> torch.Tensor:
         """
         Forward pass of DiT.
@@ -916,7 +920,7 @@ class MMDiTX(nn.Module):
 
         context = self.context_embedder(context)
 
-        x = self.forward_core_with_concat(x, c, context, controlnet_hidden_states)
+        x = self.forward_core_with_concat(x, c, context, skip_layers, controlnet_hidden_states)
 
         x = self.unpatchify(x, hw=hw)  # (N, out_channels, H, W)
         return x

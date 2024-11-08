@@ -26,6 +26,7 @@ from sd3_impls import (
     CFGDenoiser,
     DiagonalGaussianRegularizer,
     SD3LatentFormat,
+    SkipLayerCFGDenoiser,
 )
 
 #################################################################################################
@@ -337,6 +338,7 @@ class SD3Inferencer:
         sampler="dpmpp_2m",
         controlnet_cond=None,
         denoise=1.0,
+        skip_layer_config={},
     ) -> torch.Tensor:
         self.print("Sampling...")
         latent = latent.half().cuda()
@@ -356,8 +358,16 @@ class SD3Inferencer:
             sigmas[0], noise, latent, self.max_denoise(sigmas)
         )
         sample_fn = getattr(sd3_impls, f"sample_{sampler}")
+        denoiser = (
+            SkipLayerCFGDenoiser
+            if skip_layer_config.get("scale", 0) > 0
+            else CFGDenoiser
+        )
         latent = sample_fn(
-            CFGDenoiser(self.sd3.model), noise_scaled, sigmas, extra_args=extra_args
+            denoiser(self.sd3.model, steps, skip_layer_config),
+            noise_scaled,
+            sigmas,
+            extra_args=extra_args,
         )
         latent = SD3LatentFormat().process_out(latent)
         self.sd3.model = self.sd3.model.cpu()
@@ -423,6 +433,7 @@ class SD3Inferencer:
         controlnet_cond_image=CONTROLNET_COND_IMAGE,
         init_image=INIT_IMAGE,
         denoise=DENOISE,
+        skip_layer_config={},
     ):
         controlnet_cond = None
         if init_image:
@@ -455,6 +466,7 @@ class SD3Inferencer:
                 sampler,
                 controlnet_cond,
                 denoise if init_image else 1.0,
+                skip_layer_config,
             )
             image = self.vae_decode(sampled_latent)
             save_path = os.path.join(out_dir, f"{i:06d}.png")
@@ -475,6 +487,13 @@ CONFIGS = {
         "cfg": 5.0,
         "steps": 50,
         "sampler": "dpmpp_2m",
+        "skip_layer_config": {
+            "scale": 2.5,
+            "start": 0.01,
+            "end": 0.20,
+            "layers": [7, 8, 9],
+            "cfg": 4.0,
+        },
     },
     "sd3.5_large": {
         "shift": 3.0,
@@ -505,6 +524,7 @@ def main(
     vae=VAEFile,
     init_image=INIT_IMAGE,
     denoise=DENOISE,
+    skip_layer_cfg=False,
     verbose=False,
     model_folder=MODEL_FOLDER,
     text_encoder_device="cpu",
@@ -523,6 +543,13 @@ def main(
     sampler = sampler or CONFIGS.get(
         os.path.splitext(os.path.basename(model))[0], {}
     ).get("sampler", "dpmpp_2m")
+    if skip_layer_cfg:
+        skip_layer_config = CONFIGS.get(
+            os.path.splitext(os.path.basename(model))[0], {}
+        ).get("skip_layer_config", {})
+        cfg = skip_layer_config.get("cfg", cfg)
+    else:
+        skip_layer_config = {}
 
     inferencer = SD3Inferencer()
 
@@ -566,6 +593,7 @@ def main(
         controlnet_cond_image,
         init_image,
         denoise,
+        skip_layer_config,
     )
 
 
