@@ -77,6 +77,7 @@ class BaseModel(torch.nn.Module):
         pos_embed_max_size = round(math.sqrt(num_patches))
         adm_in_channels = file.get_tensor(f"{prefix}y_embedder.mlp.0.weight").shape[1]
         context_shape = file.get_tensor(f"{prefix}context_embedder.weight").shape
+
         qk_norm = (
             "rms"
             if f"{prefix}joint_blocks.0.context_block.attn.ln_k.weight" in file.keys()
@@ -195,6 +196,7 @@ class CFGDenoiser(torch.nn.Module):
         cond,
         uncond,
         cond_scale,
+        **kwargs,
     ):
         # Run cond and uncond in a batch together
         batched = self.model.apply_model(
@@ -202,6 +204,7 @@ class CFGDenoiser(torch.nn.Module):
             torch.cat([timestep, timestep]),
             c_crossattn=torch.cat([cond["c_crossattn"], uncond["c_crossattn"]]),
             y=torch.cat([cond["y"], uncond["y"]]),
+            **kwargs,
         )
         # Then split and apply CFG Scaling
         pos_out, neg_out = batched.chunk(2)

@@ -554,7 +554,7 @@ def main(
     inferencer = SD3Inferencer()
 
     inferencer.load(
-        model, vae, shift, controlnet_ckpt, model_folder, verbose, text_encoder_device
+        model, vae, shift, controlnet_ckpt, model_folder, text_encoder_device, verbose
     )
 
     if isinstance(prompt, str):
