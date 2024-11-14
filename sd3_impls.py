@@ -162,8 +162,13 @@ class BaseModel(torch.nn.Module):
             # Some ControlNets don't use the y_cond input, so we need to check if it's needed.
             if y_cond.shape[-1] != self.control_model.y_embedder.mlp[0].in_features:
                 y_cond = self.diffusion_model.y_embedder(y).to(dtype)
+            hw = x.shape[-2:]
+            
+            x_cond = x
+            if self.control_model.is_8b:
+                x_cond = self.diffusion_model.x_embedder(x) + self.diffusion_model.cropped_pos_embed(hw)
             controlnet_hidden_states = self.control_model(
-                x, controlnet_cond, y_cond, 1, sigma
+                x_cond, controlnet_cond, y_cond, 1, sigma
             )
         model_output = self.diffusion_model(
             x.to(dtype),
@@ -232,6 +237,7 @@ class SkipLayerCFGDenoiser(torch.nn.Module):
         cond,
         uncond,
         cond_scale,
+        **kwargs,
     ):
         # Run cond and uncond in a batch together
         batched = self.model.apply_model(

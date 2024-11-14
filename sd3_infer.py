@@ -60,6 +60,7 @@ def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
                 if dtype is not None:
                     tensor = tensor.to(dtype=dtype)
                 obj.requires_grad_(False)
+                # print(f"K: {model_key}, O: {obj.shape} T: {tensor.shape}")
                 if obj.shape != tensor.shape:
                     print(f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}")
                 obj.set_(tensor)
@@ -392,6 +393,14 @@ class SD3Inferencer:
         self.print("Encoded")
         return latent
 
+    def vae_encode_pkl(self, pkl_location: str) -> torch.Tensor:
+        with open(pkl_location, "rb") as f:
+            data = pickle.load(f)
+        latent = data["vae_f8_ch16.cond.sft.latent"]
+        latent, _ = DiagonalGaussianRegularizer()(latent)
+        latent = SD3LatentFormat().process_in(latent)
+        return latent
+
     def vae_encode_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
         tensor = tensor.unsqueeze(0)
         latent, _ = DiagonalGaussianRegularizer()(tensor)
@@ -445,6 +454,7 @@ class SD3Inferencer:
             controlnet_cond = self._image_to_latent(
                 controlnet_cond_image, width, height, True
             )
+            # controlnet_cond = self.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)
