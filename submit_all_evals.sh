@@ -1,0 +1,3 @@
+sbatch submit_eval.sh /weka/home-brianf/comfy-models/controlnet/canny_8b.safetensors /weka/home-brianf/controlnet_eval/canny_eval_dataset
+sbatch submit_eval.sh /weka/home-brianf/comfy-models/controlnet/depth_8b.safetensors /weka/home-brianf/controlnet_eval/depth_eval_dataset
+sbatch submit_eval.sh /weka/home-brianf/comfy-models/controlnet/blur_8b.safetensors /weka/home-brianf/controlnet_eval/blur_eval_dataset

@@ -116,7 +116,6 @@ def main(
         conditioning = inferencer.get_cond(sample["txt"])
         seed_num = 42
         neg_cond = inferencer.get_cond("")
-        print(f"Sample {i}: prompt: {sample['txt']}")
         sampled_latent = inferencer.do_sampling(
             latent,
             seed_num,
