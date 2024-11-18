@@ -66,13 +66,13 @@ class ControlNetEmbedder(nn.Module):
         x_cond: Tensor,
         y: Tensor,
         scale: int = 1,
-        timesteps: Optional[Tensor] = None,
+        timestep: Optional[Tensor] = None,
     ) -> Tuple[Tensor, List[Tensor]]:
 
         if not self.is_8b:
             x = self.x_embedder(x)
-        timesteps = timesteps * 1000
-        c = self.t_embedder(timesteps, dtype=x.dtype)
+        timestep = timestep * 1000
+        c = self.t_embedder(timestep, dtype=x.dtype)
         if y is not None and self.y_embedder is not None:
             y = self.y_embedder(y)
             c = c + y

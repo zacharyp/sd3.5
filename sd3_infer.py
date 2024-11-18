@@ -79,12 +79,12 @@ CLIPG_CONFIG = {
 
 
 class ClipG:
-    def __init__(self, model_folder: str):
+    def __init__(self, model_folder: str, device: str = "cpu"):
         with safe_open(
             f"{model_folder}/clip_g.safetensors", framework="pt", device="cpu"
         ) as f:
-            self.model = SDXLClipG(CLIPG_CONFIG, device="cpu", dtype=torch.float32)
-            load_into(f, self.model.transformer, "", "cpu", torch.float32)
+            self.model = SDXLClipG(CLIPG_CONFIG, device=device, dtype=torch.float32)
+            load_into(f, self.model.transformer, "", device, torch.float32)
 
 
 CLIPL_CONFIG = {
@@ -267,7 +267,7 @@ class SD3Inferencer:
             print("Loading OpenAI CLIP L...")
             self.clip_l = ClipL(model_folder)
             print("Loading OpenCLIP bigG...")
-            self.clip_g = ClipG(model_folder)
+            self.clip_g = ClipG(model_folder, text_encoder_device)
         print(f"Loading SD3 model {os.path.basename(model)}...")
         self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, "cuda")
         print("Loading VAE model...")

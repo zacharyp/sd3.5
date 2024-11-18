@@ -161,14 +161,19 @@ class BaseModel(torch.nn.Module):
 
             # Some ControlNets don't use the y_cond input, so we need to check if it's needed.
             if y_cond.shape[-1] != self.control_model.y_embedder.mlp[0].in_features:
-                y_cond = self.diffusion_model.y_embedder(y).to(dtype)
+                y_cond = self.diffusion_model.y_embedder(y)
             hw = x.shape[-2:]
             
-            x_cond = x
+            x_controlnet = x
+            # HACK
+            # x_controlnet = torch.load("/weka/home-brianf/x_8b.pt")
+            # controlnet_cond = torch.load("/weka/home-brianf/x_cond_8b.pt")
+            # y_cond = torch.load("/weka/home-brianf/y_cond_8b.pt")
             if self.control_model.is_8b:
-                x_cond = self.diffusion_model.x_embedder(x) + self.diffusion_model.cropped_pos_embed(hw)
+                x_controlnet = self.diffusion_model.x_embedder(x) + self.diffusion_model.cropped_pos_embed(hw)
+                # y_cond[0] = torch.zeros_like(y_cond[0])
             controlnet_hidden_states = self.control_model(
-                x_cond, controlnet_cond, y_cond, 1, sigma
+                x_controlnet, controlnet_cond, y_cond, 1, sigma.to(torch.float32)
             )
         model_output = self.diffusion_model(
             x.to(dtype),
