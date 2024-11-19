@@ -24,7 +24,6 @@ from sd3_impls import (
     SDVAE,
     BaseModel,
     CFGDenoiser,
-    DiagonalGaussianRegularizer,
     SD3LatentFormat,
     SkipLayerCFGDenoiser,
 )
@@ -393,17 +392,8 @@ class SD3Inferencer:
         self.print("Encoded")
         return latent
 
-    def vae_encode_pkl(self, pkl_location: str) -> torch.Tensor:
-        with open(pkl_location, "rb") as f:
-            data = pickle.load(f)
-        latent = data["vae_f8_ch16.cond.sft.latent"]
-        latent, _ = DiagonalGaussianRegularizer()(latent)
-        latent = SD3LatentFormat().process_in(latent)
-        return latent
-
     def vae_encode_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
         tensor = tensor.unsqueeze(0)
-        latent, _ = DiagonalGaussianRegularizer()(tensor)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -454,7 +444,6 @@ class SD3Inferencer:
             controlnet_cond = self._image_to_latent(
                 controlnet_cond_image, width, height, True
             )
-            # controlnet_cond = self.vae_encode_pkl("/weka/home-brianf/controlnet_val/canny_8_3/pkl/data_6.pkl")
         neg_cond = self.get_cond("")
         seed_num = None
         pbar = tqdm(enumerate(prompts), position=0, leave=True)

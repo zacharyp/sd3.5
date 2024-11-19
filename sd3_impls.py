@@ -159,21 +159,17 @@ class BaseModel(torch.nn.Module):
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
 
-            # Some ControlNets don't use the y_cond input, so we need to check if it's needed.
-            if y_cond.shape[-1] != self.control_model.y_embedder.mlp[0].in_features:
+            # 8B ControlNets were trained with a slightly different architecture.
+            is_8b = y_cond.shape[-1] == self.control_model.y_embedder.mlp[0].in_features
+            if not is_8b:
                 y_cond = self.diffusion_model.y_embedder(y)
-            hw = x.shape[-2:]
             
             x_controlnet = x
-            # HACK
-            # x_controlnet = torch.load("/weka/home-brianf/x_8b.pt")
-            # controlnet_cond = torch.load("/weka/home-brianf/x_cond_8b.pt")
-            # y_cond = torch.load("/weka/home-brianf/y_cond_8b.pt")
-            if self.control_model.is_8b:
+            if is_8b:
+                hw = x.shape[-2:]
                 x_controlnet = self.diffusion_model.x_embedder(x) + self.diffusion_model.cropped_pos_embed(hw)
-                # y_cond[0] = torch.zeros_like(y_cond[0])
             controlnet_hidden_states = self.control_model(
-                x_controlnet, controlnet_cond, y_cond, 1, sigma.to(torch.float32)
+                x_controlnet, controlnet_cond, y_cond, 1, sigma.to(torch.float32), is_8b
             )
         model_output = self.diffusion_model(
             x.to(dtype),
@@ -747,72 +743,3 @@ class SDVAE(torch.nn.Module):
         std = torch.exp(0.5 * logvar)
         return mean + std * torch.randn_like(mean)
 
-
-class DiagonalGaussianDistribution:
-    def __init__(self, parameters, deterministic=False, chunk_dim: int = 1):
-        self.parameters = parameters
-        self.mean, self.logvar = torch.chunk(parameters, 2, dim=chunk_dim)
-        self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
-        self.deterministic = deterministic
-        self.std = torch.exp(0.5 * self.logvar)
-        self.var = torch.exp(self.logvar)
-        if self.deterministic:
-            self.var = self.std = torch.zeros_like(self.mean).to(
-                device=self.parameters.device
-            )
-
-    def sample(self):
-        x = self.mean + self.std * torch.randn(self.mean.shape).to(
-            device=self.parameters.device
-        )
-        return x
-
-    def kl(self, other=None):
-        if self.deterministic:
-            return torch.Tensor([0.0])
-        else:
-            if other is None:
-                return 0.5 * torch.sum(
-                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
-                    dim=list(range(1, self.mean.ndim)),
-                )
-            else:
-                return 0.5 * torch.sum(
-                    torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var
-                    - 1.0
-                    - self.logvar
-                    + other.logvar,
-                    dim=list(range(1, self.mean.ndim)),
-                )
-
-    def nll(self, sample, dims=[1, 2, 3]):
-        if self.deterministic:
-            return torch.Tensor([0.0])
-        logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(
-            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
-            dim=dims,
-        )
-
-    def mode(self):
-        return self.mean
-
-
-class DiagonalGaussianRegularizer(nn.Module):
-    def __init__(self, sample: bool = True, chunk_dim: int = 1):
-        super().__init__()
-        self.sample = sample
-        self.chunk_dim = chunk_dim
-
-    def forward(self, z: torch.Tensor) -> Tuple[torch.Tensor, dict]:
-        log = dict()
-        posterior = DiagonalGaussianDistribution(z, chunk_dim=self.chunk_dim)
-        if self.sample:
-            z = posterior.sample()
-        else:
-            z = posterior.mode()
-        kl_loss = posterior.kl()
-        kl_loss = torch.sum(kl_loss) / kl_loss.shape[0]
-        log["kl_loss"] = kl_loss
-        return z, log

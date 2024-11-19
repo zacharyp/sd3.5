@@ -58,7 +58,6 @@ class ControlNetEmbedder(nn.Module):
             embed_dim=self.hidden_size,
             strict_img_size=False,
         )
-        self.is_8b = True
 
     def forward(
         self,
@@ -67,9 +66,10 @@ class ControlNetEmbedder(nn.Module):
         y: Tensor,
         scale: int = 1,
         timestep: Optional[Tensor] = None,
+        is_8b: bool = False
     ) -> Tuple[Tensor, List[Tensor]]:
 
-        if not self.is_8b:
+        if not is_8b:
             x = self.x_embedder(x)
         timestep = timestep * 1000
         c = self.t_embedder(timestep, dtype=x.dtype)
@@ -83,7 +83,7 @@ class ControlNetEmbedder(nn.Module):
 
         for block in self.transformer_blocks:
             out = block(x, c)
-            if self.is_8b:
+            if is_8b:
                 x = out
             block_out += (out,)
 
