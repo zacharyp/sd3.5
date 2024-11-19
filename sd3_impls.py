@@ -114,6 +114,7 @@ class BaseModel(torch.nn.Module):
             context_embedder_config=context_embedder_config,
             qk_norm=qk_norm,
             x_block_self_attn_layers=x_block_self_attn_layers,
+            attn_mode="xformers",
             device=device,
             dtype=dtype,
             verbose=verbose,

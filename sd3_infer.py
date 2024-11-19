@@ -62,7 +62,9 @@ def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
                 obj.requires_grad_(False)
                 # print(f"K: {model_key}, O: {obj.shape} T: {tensor.shape}")
                 if obj.shape != tensor.shape:
-                    print(f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}")
+                    print(
+                        f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}"
+                    )
                 obj.set_(tensor)
             except Exception as e:
                 print(f"Failed to load key '{key}' in safetensors file: {e}")
@@ -253,7 +255,7 @@ class SD3Inferencer:
         model_folder: str = MODEL_FOLDER,
         text_encoder_device: str = "cpu",
         verbose=False,
-        load_tokenizers: bool = True
+        load_tokenizers: bool = True,
     ):
         self.verbose = verbose
         print("Loading tokenizers...")
@@ -402,7 +404,6 @@ class SD3Inferencer:
         return latent
 
     def vae_encode_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
-        tensor = tensor.unsqueeze(0)
         latent, _ = DiagonalGaussianRegularizer()(tensor)
         latent = SD3LatentFormat().process_in(latent)
         return latent
@@ -564,7 +565,14 @@ def main(
     inferencer = SD3Inferencer()
 
     inferencer.load(
-        model, vae, shift, controlnet_ckpt, model_folder, text_encoder_device, verbose
+        model,
+        vae,
+        shift,
+        controlnet_ckpt,
+        model_folder,
+        text_encoder_device,
+        verbose,
+        load_tokenizers=False,
     )
 
     if isinstance(prompt, str):

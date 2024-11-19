@@ -294,7 +294,7 @@ class SelfAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         (q, k, v) = self.pre_attention(x)
-        x = attention(q, k, v, self.num_heads)
+        x = attention(q, k, v, self.num_heads, self.attn_mode)
         x = self.post_attention(x)
         return x
 
