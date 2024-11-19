@@ -10,12 +10,15 @@
 
 set -ex
 
-CONTROLNET_CKPT=$1
-DATASET=$2
+CONTROL_TYPE=$1
 
-echo "Evaluating controlnet model: $CONTROLNET_CKPT with dataset: $DATASET"
+CKPT_PATH=/weka/home-brianf/comfy-models/controlnet/${CONTROL_TYPE}_8b.safetensors
+DATASET=/weka/home-brianf/controlnet_eval/${CONTROL_TYPE}_eval_dataset
+OUT_DIR=outputs/controlnet_8b_${CONTROL_TYPE}
 
-mkdir -p outputs/$CONTROLNET_CKPT
+echo "ckpt path: $CKPT_PATH, control type: $CONTROL_TYPE, dataset: $DATASET, out_dir: $OUT_DIR"
+
+mkdir -p $OUT_DIR
 
 python evaluate.py \
     --verbose True \
@@ -26,4 +29,4 @@ python evaluate.py \
     --vae "/weka/applied-shared/sd3_ref/sd3_vae.safetensors" \
     --sampler "euler" \
     --text_encoder_device "cuda" \
-    --out_dir "outputs/$CONTROLNET_CKPT" \
+    --out_dir $OUT_DIR \
