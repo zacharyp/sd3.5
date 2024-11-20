@@ -51,7 +51,6 @@ def load_pickles(folder_path):
     # Filter and sort the files
     pickle_files = sorted(
         [file for file in files if file.startswith("data_") and file.endswith(".pkl")],
-        key=lambda x: int(x.split("_")[1].split(".")[0]),
     )
 
     data_list = []
@@ -124,7 +123,7 @@ def main(
         controlnet_ckpt,
         model_folder,
         text_encoder_device,
-        load_tokenizers=True,
+        load_tokenizers=False,
     )
 
     print(f"Saving images to {out_dir}")
@@ -150,8 +149,8 @@ def main(
     # torch.save(neg_cond[0], os.path.join(out_dir, "neg_cond_0.pt"))
     # torch.save(neg_cond[1], os.path.join(out_dir, "neg_cond_1.pt"))
     neg_cond = (
-        torch.load(os.path.join("outputs", "neg_cond_0.pt")),
-        torch.load(os.path.join("outputs", "neg_cond_1.pt")),
+        torch.load("neg_cond_0.pt"),
+        torch.load("neg_cond_1.pt"),
     )
 
     for i, sample in tqdm(enumerate(dataset)):
@@ -161,7 +160,9 @@ def main(
         else:
             latent = inferencer.get_empty_latent(1, width, height, seed, "cpu")
             latent = latent.cuda()
-        controlnet_cond = inferencer.vae_encode_tensor(sample["vae_f8_ch16.cond.sft.latent"])
+        controlnet_cond = inferencer.vae_encode_tensor(
+            sample["vae_f8_ch16.cond.sft.latent"]
+        )
         conditioning = _get_precomputed_cond(sample)
         seed_num = 42
         sampled_latent = inferencer.do_sampling(

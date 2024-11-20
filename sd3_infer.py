@@ -382,8 +382,7 @@ class SD3Inferencer:
         image_np = np.moveaxis(image_np, 2, 0)
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
         image_torch = torch.from_numpy(batch_images).cuda()
-        if not controlnet_cond:
-            image_torch = 2.0 * image_torch - 1.0
+        image_torch = 2.0 * image_torch - 1.0
         image_torch = image_torch.cuda()
         self.vae.model = self.vae.model.cuda()
         latent = self.vae.model.encode(image_torch).cpu()
@@ -400,9 +399,9 @@ class SD3Inferencer:
         return latent
 
     def vae_encode_tensor(self, tensor: torch.Tensor) -> torch.Tensor:
-        latent, _ = DiagonalGaussianRegularizer()(tensor)
-        latent = SD3LatentFormat().process_in(latent)
-        return latent
+        tensor, _ = DiagonalGaussianRegularizer()(tensor)
+        tensor = SD3LatentFormat().process_in(tensor)
+        return tensor
 
     def vae_decode(self, latent) -> Image.Image:
         self.print("Decoding latent to image...")
