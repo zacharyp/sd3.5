@@ -17,6 +17,7 @@ import torch
 from PIL import Image
 from safetensors import safe_open
 from tqdm import tqdm
+import re
 
 import sd3_impls
 from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
@@ -61,7 +62,9 @@ def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
                 obj.requires_grad_(False)
                 # print(f"K: {model_key}, O: {obj.shape} T: {tensor.shape}")
                 if obj.shape != tensor.shape:
-                    print(f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}")
+                    print(
+                        f"W: shape mismatch for key {model_key}, {obj.shape} != {tensor.shape}"
+                    )
                 obj.set_(tensor)
             except Exception as e:
                 print(f"Failed to load key '{key}' in safetensors file: {e}")
@@ -148,6 +151,11 @@ class SD3:
     def __init__(
         self, model, shift, control_model_file=None, verbose=False, device="cpu"
     ):
+
+        # NOTE 8B ControlNets were trained with a slightly different forward pass and conditioning, 
+        # so this is a flag to enable that logic.
+        self.using_8b_controlnet = False
+
         with safe_open(model, framework="pt", device="cpu") as f:
             control_model_ckpt = None
             if control_model_file is not None:
@@ -165,9 +173,6 @@ class SD3:
             ).eval()
             load_into(f, self.model, "model.", "cuda", torch.float16)
         if control_model_file is not None:
-            self.model.control_model = self.model.control_model.to(
-                device=device, dtype=torch.float16
-            )
             control_model_ckpt = safe_open(
                 control_model_file, framework="pt", device=device
             )
@@ -179,6 +184,9 @@ class SD3:
                 dtype=torch.float16,
                 remap=CONTROLNET_MAP,
             )
+
+            self.using_8b_controlnet = self.model.control_model.y_embedder.mlp[0].in_features == 2048
+            self.model.control_model.using_8b_controlnet = self.using_8b_controlnet
         control_model_ckpt = None
 
 
@@ -252,7 +260,7 @@ class SD3Inferencer:
         model_folder: str = MODEL_FOLDER,
         text_encoder_device: str = "cpu",
         verbose=False,
-        load_tokenizers: bool = True
+        load_tokenizers: bool = True,
     ):
         self.verbose = verbose
         print("Loading tokenizers...")
@@ -374,19 +382,19 @@ class SD3Inferencer:
         self.print("Sampling done")
         return latent
 
-    def vae_encode(self, image, controlnet_cond: bool = False) -> torch.Tensor:
+    def vae_encode(self, image, using_8b_controlnet: bool = False) -> torch.Tensor:
         self.print("Encoding image to latent...")
         image = image.convert("RGB")
         image_np = np.array(image).astype(np.float32) / 255.0
         image_np = np.moveaxis(image_np, 2, 0)
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
         image_torch = torch.from_numpy(batch_images).cuda()
-        if not controlnet_cond:
+        if using_8b_controlnet:
             image_torch = 2.0 * image_torch - 1.0
+        else:
+            image_torch = image_torch * 255
         image_torch = image_torch.cuda()
         self.vae.model = self.vae.model.cuda()
-        if controlnet_cond:
-            image_torch = image_torch * 255
         latent = self.vae.model.encode(image_torch).cpu()
         self.vae.model = self.vae.model.cpu()
         self.print("Encoded")
@@ -411,10 +419,10 @@ class SD3Inferencer:
         self.print("Decoded")
         return out_image
 
-    def _image_to_latent(self, image, width, height, controlnet_cond: bool = False):
+    def _image_to_latent(self, image, width, height, using_8b_controlnet: bool = False):
         image_data = Image.open(image)
         image_data = image_data.resize((width, height), Image.LANCZOS)
-        latent = self.vae_encode(image_data, controlnet_cond)
+        latent = self.vae_encode(image_data, using_8b_controlnet)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -442,7 +450,7 @@ class SD3Inferencer:
             latent = latent.cuda()
         if controlnet_cond_image:
             controlnet_cond = self._image_to_latent(
-                controlnet_cond_image, width, height, True
+                controlnet_cond_image, width, height, self.sd3.using_8b_controlnet
             )
         neg_cond = self.get_cond("")
         seed_num = None
@@ -468,8 +476,9 @@ class SD3Inferencer:
                 skip_layer_config,
             )
             image = self.vae_decode(sampled_latent)
+            os.makedirs(out_dir, exist_ok=False)
             save_path = os.path.join(out_dir, f"{i:06d}.png")
-            self.print(f"Will save to {save_path}")
+            self.print(f"Saving to to {save_path}")
             image.save(save_path)
             self.print("Done")
 
@@ -553,7 +562,13 @@ def main(
     inferencer = SD3Inferencer()
 
     inferencer.load(
-        model, vae, shift, controlnet_ckpt, model_folder, text_encoder_device, verbose
+        model,
+        vae,
+        shift,
+        controlnet_ckpt,
+        model_folder,
+        text_encoder_device,
+        verbose,
     )
 
     if isinstance(prompt, str):
@@ -563,6 +578,7 @@ def main(
         else:
             prompts = [prompt]
 
+    sanitized_prompt = re.sub(r'[^\w\-\.]', '_', prompt)
     out_dir = os.path.join(
         out_dir,
         (
@@ -573,11 +589,9 @@ def main(
                 else ""
             )
         ),
-        os.path.splitext(os.path.basename(prompt))[0][:50]
+        os.path.splitext(os.path.basename(sanitized_prompt))[0][:50]
         + (postfix or datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S")),
     )
-    print(f"Saving images to {out_dir}")
-    os.makedirs(out_dir, exist_ok=False)
 
     inferencer.gen_image(
         prompts,

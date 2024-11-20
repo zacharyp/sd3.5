@@ -148,7 +148,7 @@ class BaseModel(torch.nn.Module):
                 pooled_projection_size=pooled_projection_size,
                 device=device,
                 dtype=dtype,
-            ).to(device=device, dtype=dtype)
+            )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, skip_layers=[], controlnet_cond=None):
         dtype = self.get_dtype()
@@ -159,17 +159,15 @@ class BaseModel(torch.nn.Module):
             controlnet_cond = controlnet_cond.to(dtype=x.dtype, device=x.device)
             controlnet_cond = controlnet_cond.repeat(x.shape[0], 1, 1, 1)
 
-            # 8B ControlNets were trained with a slightly different architecture.
-            is_8b = y_cond.shape[-1] == self.control_model.y_embedder.mlp[0].in_features
-            if not is_8b:
+            if not self.control_model.using_8b_controlnet:
                 y_cond = self.diffusion_model.y_embedder(y)
             
             x_controlnet = x
-            if is_8b:
+            if self.control_model.using_8b_controlnet:
                 hw = x.shape[-2:]
                 x_controlnet = self.diffusion_model.x_embedder(x) + self.diffusion_model.cropped_pos_embed(hw)
             controlnet_hidden_states = self.control_model(
-                x_controlnet, controlnet_cond, y_cond, 1, sigma.to(torch.float32), is_8b
+                x_controlnet, controlnet_cond, y_cond, 1, sigma.to(torch.float32)
             )
         model_output = self.diffusion_model(
             x.to(dtype),
