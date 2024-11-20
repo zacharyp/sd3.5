@@ -32,6 +32,8 @@ class ControlNetEmbedder(nn.Module):
             in_chans=in_chans,
             embed_dim=self.hidden_size,
             strict_img_size=pos_embed_max_size is None,
+            device=device,
+            dtype=dtype,
         )
 
         self.t_embedder = TimestepEmbedder(self.hidden_size, dtype=dtype, device=device)
@@ -41,14 +43,14 @@ class ControlNetEmbedder(nn.Module):
 
         self.transformer_blocks = nn.ModuleList(
             DismantledBlock(
-                hidden_size=self.hidden_size, num_heads=num_attention_heads, qkv_bias=True
+                hidden_size=self.hidden_size, num_heads=num_attention_heads, qkv_bias=True, device=device, dtype=dtype
             )
             for _ in range(num_layers)
         )
 
         self.controlnet_blocks = nn.ModuleList([])
         for _ in range(len(self.transformer_blocks)):
-            controlnet_block = nn.Linear(self.hidden_size, self.hidden_size)
+            controlnet_block = nn.Linear(self.hidden_size, self.hidden_size, device=device, dtype=dtype)
             self.controlnet_blocks.append(controlnet_block)
 
         self.pos_embed_input = PatchEmbed(
@@ -57,6 +59,8 @@ class ControlNetEmbedder(nn.Module):
             in_chans=in_chans,
             embed_dim=self.hidden_size,
             strict_img_size=False,
+            dtype=dtype,
+            device=device
         )
         self.is_8b = True
 

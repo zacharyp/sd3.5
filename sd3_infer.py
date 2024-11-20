@@ -17,6 +17,7 @@ import torch
 from PIL import Image
 from safetensors import safe_open
 from tqdm import tqdm
+import re
 
 import sd3_impls
 from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
@@ -168,9 +169,6 @@ class SD3:
             ).eval()
             load_into(f, self.model, "model.", "cuda", torch.float16)
         if control_model_file is not None:
-            self.model.control_model = self.model.control_model.to(
-                device=device, dtype=torch.float16
-            )
             control_model_ckpt = safe_open(
                 control_model_file, framework="pt", device=device
             )
@@ -388,8 +386,6 @@ class SD3Inferencer:
             image_torch = 2.0 * image_torch - 1.0
         image_torch = image_torch.cuda()
         self.vae.model = self.vae.model.cuda()
-        if controlnet_cond:
-            image_torch = image_torch * 255
         latent = self.vae.model.encode(image_torch).cpu()
         self.vae.model = self.vae.model.cpu()
         self.print("Encoded")
@@ -426,6 +422,7 @@ class SD3Inferencer:
         image_data = Image.open(image)
         image_data = image_data.resize((width, height), Image.LANCZOS)
         latent = self.vae_encode(image_data, controlnet_cond)
+        # latent, _ = DiagonalGaussianRegularizer()(latent)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -480,8 +477,9 @@ class SD3Inferencer:
                 skip_layer_config,
             )
             image = self.vae_decode(sampled_latent)
+            os.makedirs(out_dir, exist_ok=False)
             save_path = os.path.join(out_dir, f"{i:06d}.png")
-            self.print(f"Will save to {save_path}")
+            self.print(f"Saving to to {save_path}")
             image.save(save_path)
             self.print("Done")
 
@@ -572,7 +570,6 @@ def main(
         model_folder,
         text_encoder_device,
         verbose,
-        load_tokenizers=False,
     )
 
     if isinstance(prompt, str):
@@ -582,6 +579,7 @@ def main(
         else:
             prompts = [prompt]
 
+    sanitized_prompt = re.sub(r'[^\w\-\.]', '_', prompt)
     out_dir = os.path.join(
         out_dir,
         (
@@ -592,11 +590,9 @@ def main(
                 else ""
             )
         ),
-        os.path.splitext(os.path.basename(prompt))[0][:50]
+        os.path.splitext(os.path.basename(sanitized_prompt))[0][:50]
         + (postfix or datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S")),
     )
-    print(f"Saving images to {out_dir}")
-    os.makedirs(out_dir, exist_ok=False)
 
     inferencer.gen_image(
         prompts,

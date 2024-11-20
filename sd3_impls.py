@@ -149,7 +149,7 @@ class BaseModel(torch.nn.Module):
                 pooled_projection_size=pooled_projection_size,
                 device=device,
                 dtype=dtype,
-            ).to(device=device, dtype=dtype)
+            )
 
     def apply_model(self, x, sigma, c_crossattn=None, y=None, skip_layers=[], controlnet_cond=None):
         dtype = self.get_dtype()
