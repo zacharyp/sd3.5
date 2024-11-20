@@ -375,14 +375,17 @@ class SD3Inferencer:
         self.print("Sampling done")
         return latent
 
-    def vae_encode(self, image, controlnet_cond: bool = False) -> torch.Tensor:
+    def vae_encode(self, image, using_2b_controlnet: bool = False) -> torch.Tensor:
         self.print("Encoding image to latent...")
         image = image.convert("RGB")
         image_np = np.array(image).astype(np.float32) / 255.0
         image_np = np.moveaxis(image_np, 2, 0)
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
         image_torch = torch.from_numpy(batch_images).cuda()
-        image_torch = 2.0 * image_torch - 1.0
+        if using_2b_controlnet:
+            image_torch = image_torch * 255
+        else:
+            image_torch = 2.0 * image_torch - 1.0
         image_torch = image_torch.cuda()
         self.vae.model = self.vae.model.cuda()
         latent = self.vae.model.encode(image_torch).cpu()

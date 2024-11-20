@@ -62,7 +62,7 @@ class ControlNetEmbedder(nn.Module):
             dtype=dtype,
             device=device
         )
-        self.is_8b = True
+        self.is_8b = False
 
     def forward(
         self,
