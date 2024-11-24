@@ -1,4 +1,4 @@
-# Stable Diffusion 3 Micro-Reference Implementation
+# Stable Diffusion 3.5
 
 Inference-only tiny reference implementation of SD3.5 and SD3 - everything you need for simple inference using SD3.5/SD3, excluding the weights files.
 
@@ -26,8 +26,8 @@ This code also works for [Stability AI SD3 Medium](https://huggingface.co/stabil
 
 ```sh
 # Note: on windows use "python" not "python3"
-python3 -s -m venv venv
-source ./venv/bin/activate
+python3 -s -m venv .sd3.5
+source .sd3.5/bin/activate
 # or on windows: venv/scripts/activate
 python3 -s -m pip install -r requirements.txt
 ```
@@ -47,13 +47,10 @@ python3 sd3_infer.py --prompt path/to/my_prompts.txt --model models/sd3.5_medium
 python3 sd3_infer.py --prompt path/to/my_prompts.txt --model models/sd3_medium.safetensors
 ```
 
+Images will be output to `outputs/<MODEL>/<PROMPT>_<DATETIME>_<POSTFIX>` by default.
+To add a postfix to the output directory, add `--postfix <my_postfix>`. For example,
 ```sh
-# Generate a cat on ref model with default settings
-python3 -s sd3_infer.py
-# Generate a 1024 cat on SD3-8B
-python3 -s sd3_infer.py --width 1024 --height 1024 --shift 3 --model models/sd3_medium.safetensors --prompt "cute wallpaper art of a cat"
-# Or for parameter listing
-python3 -s sd3_infer.py --help
+python3 sd3_infer.py --prompt path/to/my_prompts.txt --postfix "steps100" --steps 100
 ```
 
 To change the resolution of the generated image, add `--width <WIDTH> --height <HEIGHT>`.
@@ -65,13 +62,13 @@ python3 sd3_infer.py --prompt path/to/my_prompts.txt --model models/sd3.5_medium
 
 ### File Guide
 
-- `sd3_infer.py` - entry point, review this for basic usage of diffusion model and the triple-tenc cat
-- `sd3_impls.py` - contains the wrapper around the MMDiT and the VAE
-- `other_impls.py` - contains the CLIP model, the T5 model, and some utilities
-- `mmdit.py` - contains the core of the MMDiT itself
+- `sd3_infer.py` - entry point, review this for basic usage of diffusion model
+- `sd3_impls.py` - contains the wrapper around the MMDiTX and the VAE
+- `other_impls.py` - contains the CLIP models, the T5 model, and some utilities
+- `mmditx.py` - contains the core of the MMDiT-X itself
 - folder `models` with the following files (download separately):
-    - `clip_g.safetensors` (openclip bigG, same as SDXL, can grab a public copy)
-    - `clip_l.safetensors` (OpenAI CLIP-L, same as SDXL, can grab a public copy)
+    - `clip_l.safetensors` (OpenAI CLIP-L, same as SDXL/SD3, can grab a public copy)
+    - `clip_g.safetensors` (openclip bigG, same as SDXL/SD3, can grab a public copy)
     - `t5xxl.safetensors` (google T5-v1.1-XXL, can grab a public copy)
     - `sd3.5_large.safetensors` or `sd3.5_large_turbo.safetensors` or `sd3.5_medium.safetensors` (or `sd3_medium.safetensors`)
 
@@ -80,33 +77,13 @@ python3 sd3_infer.py --prompt path/to/my_prompts.txt --model models/sd3.5_medium
 The code included here originates from:
 - Stability AI internal research code repository (MM-DiT)
 - Public Stability AI repositories (eg VAE)
-- Some unique code for this reference repo written by Alex Goodwin for Stability AI
-- Some code from ComfyUI internal Stability impl of SD3 (for some code corrections and handlers)
+- Some unique code for this reference repo written by Alex Goodwin and Vikram Voleti for Stability AI
+- Some code from ComfyUI internal Stability implementation of SD3 (for some code corrections and handlers)
 - HuggingFace and upstream providers (for sections of CLIP/T5 code)
 
 ### Legal
 
-MIT License
-
-Copyright (c) 2024 Stability AI
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Check the LICENSE-CODE file.
 
 #### Note
 
