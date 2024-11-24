@@ -60,6 +60,16 @@ Optionally, use [Skip Layer Guidance](https://github.com/comfyanonymous/ComfyUI/
 python3 sd3_infer.py --prompt path/to/my_prompts.txt --model models/sd3.5_medium.safetensors --skip_layer_cfg True
 ```
 
+To use ControlNets, download your chosen ControlNet model from the [model repository](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets), then run inference, like so:
+
+```sh
+wget -O models/canny_8b.safetensors https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets/resolve/main/canny_8b.safetensors 
+
+python sd3_infer.py --controlnet_ckpt models/canny_8b.safetensors --controlnet_cond_image input/canny.png --prompt path/to/my_prompts.txt
+```
+
+For details on preprocessing for each of the ControlNets, and examples, please review the [model card](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets).
+
 ### File Guide
 
 - `sd3_infer.py` - entry point, review this for basic usage of diffusion model
