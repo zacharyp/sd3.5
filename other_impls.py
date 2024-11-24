@@ -9,32 +9,20 @@ from torch import nn
 from transformers import CLIPTokenizer, T5TokenizerFast
 from einops import rearrange
 
-try:
-    import xformers.ops
-except ImportError:
-    xformers.ops = None
-    print("xformers not found, attn_mode='xformers' will not work")
-
 #################################################################################################
 ### Core/Utility
 #################################################################################################
 
 
-def attention(q, k, v, heads, mask=None, attn_mode: str = "torch"):
+def attention(q, k, v, heads, mask=None):
     """Convenience wrapper around a basic attention operation"""
     b, _, dim_head = q.shape
     dim_head //= heads
     q, k, v = map(lambda t: t.view(b, -1, heads, dim_head).transpose(1, 2), (q, k, v))
-    if attn_mode == "torch":
-        out = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False
-        )
-        return out.transpose(1, 2).reshape(b, -1, heads * dim_head)
-    elif attn_mode == "xformers":
-        x = xformers.ops.memory_efficient_attention(q, k, v)
-        x = rearrange(x, "b h n d -> b n (h d)")
-        return x
-
+    out = torch.nn.functional.scaled_dot_product_attention(
+        q, k, v, attn_mask=mask, dropout_p=0.0, is_causal=False
+    )
+    return out.transpose(1, 2).reshape(b, -1, heads * dim_head)
 
 class Mlp(nn.Module):
     """MLP as used in Vision Transformer, MLP-Mixer and related networks"""
