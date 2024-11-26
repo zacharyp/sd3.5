@@ -22,6 +22,21 @@ Download the following models from HuggingFace into `models` directory:
 
 This code also works for [Stability AI SD3 Medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium/blob/main/sd3_medium.safetensors).
 
+#### ControlNets
+Optionally, download [SD3.5 ControlNets](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets):
+(a) [Blur ControlNet](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets/resolve/main/blur_8b.safetensors)
+(b) [Canny ControlNet](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets/resolve/main/canny_8b.safetensors)
+(c) [Depth ControlNet](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets/resolve/main/depth_8b.safetensors)
+For example:
+```py
+from huggingface_hub import hf_hub_download
+hf_hub_download("stabilityai/stable-diffusion-3.5-controlnets", "canny_8b.safetensors", local_dir="models")
+```
+<!-- ```sh
+wget -O models/canny_8b.safetensors https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets/resolve/main/canny_8b.safetensors
+```
+or -->
+
 ### Install
 
 ```sh
@@ -60,12 +75,11 @@ Optionally, use [Skip Layer Guidance](https://github.com/comfyanonymous/ComfyUI/
 python3 sd3_infer.py --prompt path/to/my_prompts.txt --model models/sd3.5_medium.safetensors --skip_layer_cfg True
 ```
 
-To use ControlNets, download your chosen ControlNet model from the [model repository](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets), then run inference, like so:
+#### ControlNets
 
+To use ControlNets, also download your chosen ControlNet model from the [model repository](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets), then run inference, like so:
 ```sh
-wget -O models/canny_8b.safetensors https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets/resolve/main/canny_8b.safetensors 
-
-python sd3_infer.py --controlnet_ckpt models/canny_8b.safetensors --controlnet_cond_image input/canny.png --prompt path/to/my_prompts.txt
+python sd3_infer.py --controlnet_ckpt models/canny_8b.safetensors --controlnet_cond_image inputs/canny.png --prompt "A Night time photo taken by Leica M11, portrait of a Japanese woman in a loose and half worn kimono showing her bare shoulders, looking at the camera, Cherry blossoms"
 ```
 
 For details on preprocessing for each of the ControlNets, and examples, please review the [model card](https://huggingface.co/stabilityai/stable-diffusion-3.5-controlnets).

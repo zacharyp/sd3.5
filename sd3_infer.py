@@ -6,10 +6,11 @@
 # Also can have
 # - `sd3_vae.safetensors` (holds the VAE separately if needed)
 
-import pickle
 import datetime
 import math
 import os
+import pickle
+import re
 
 import fire
 import numpy as np
@@ -17,7 +18,6 @@ import torch
 from PIL import Image
 from safetensors import safe_open
 from tqdm import tqdm
-import re
 
 import sd3_impls
 from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
@@ -461,7 +461,7 @@ class SD3Inferencer:
             )
         neg_cond = self.get_cond("")
         seed_num = None
-        pbar = tqdm(enumerate(prompts), position=0, leave=True)
+        pbar = tqdm(enumerate(prompts), total=len(prompts), position=0, leave=True)
         for i, prompt in pbar:
             if seed_type == "roll":
                 seed_num = seed if seed_num is None else seed_num + 1
@@ -483,7 +483,6 @@ class SD3Inferencer:
                 skip_layer_config,
             )
             image = self.vae_decode(sampled_latent)
-            os.makedirs(out_dir, exist_ok=False)
             save_path = os.path.join(out_dir, f"{i:06d}.png")
             self.print(f"Saving to to {save_path}")
             image.save(save_path)
@@ -599,6 +598,8 @@ def main(
         os.path.splitext(os.path.basename(sanitized_prompt))[0][:50]
         + (postfix or datetime.datetime.now().strftime("_%Y-%m-%dT%H-%M-%S")),
     )
+
+    os.makedirs(out_dir, exist_ok=False)
 
     inferencer.gen_image(
         prompts,
