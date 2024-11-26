@@ -176,6 +176,7 @@ class SD3:
             control_model_ckpt = safe_open(
                 control_model_file, framework="pt", device=device
             )
+            self.model.control_model = self.model.control_model.to(device)
             load_into(
                 control_model_ckpt,
                 self.model.control_model,
@@ -278,7 +279,7 @@ class SD3Inferencer:
             print("Loading OpenCLIP bigG...")
             self.clip_g = ClipG(model_folder, text_encoder_device)
         print(f"Loading SD3 model {os.path.basename(model)}...")
-        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose)
+        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, "cuda")
         print("Loading VAE model...")
         self.vae = VAE(vae or model)
         print("Models loaded.")
