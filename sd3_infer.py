@@ -152,7 +152,7 @@ class SD3:
         self, model, shift, control_model_file=None, verbose=False, device="cpu"
     ):
 
-        # NOTE 8B ControlNets were trained with a slightly different forward pass and conditioning, 
+        # NOTE 8B ControlNets were trained with a slightly different forward pass and conditioning,
         # so this is a flag to enable that logic.
         self.using_8b_controlnet = False
 
@@ -185,7 +185,9 @@ class SD3:
                 remap=CONTROLNET_MAP,
             )
 
-            self.using_8b_controlnet = self.model.control_model.y_embedder.mlp[0].in_features == 2048
+            self.using_8b_controlnet = (
+                self.model.control_model.y_embedder.mlp[0].in_features == 2048
+            )
             self.model.control_model.using_8b_controlnet = self.using_8b_controlnet
         control_model_ckpt = None
 
@@ -276,7 +278,7 @@ class SD3Inferencer:
             print("Loading OpenCLIP bigG...")
             self.clip_g = ClipG(model_folder, text_encoder_device)
         print(f"Loading SD3 model {os.path.basename(model)}...")
-        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose, "cuda")
+        self.sd3 = SD3(model, shift, controlnet_ckpt, verbose)
         print("Loading VAE model...")
         self.vae = VAE(vae or model)
         print("Models loaded.")
@@ -382,17 +384,17 @@ class SD3Inferencer:
         self.print("Sampling done")
         return latent
 
-    def vae_encode(self, image, using_8b_controlnet: bool = False) -> torch.Tensor:
+    def vae_encode(self, image, using_2b_controlnet: bool = False) -> torch.Tensor:
         self.print("Encoding image to latent...")
         image = image.convert("RGB")
         image_np = np.array(image).astype(np.float32) / 255.0
         image_np = np.moveaxis(image_np, 2, 0)
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
         image_torch = torch.from_numpy(batch_images).cuda()
-        if using_8b_controlnet:
-            image_torch = 2.0 * image_torch - 1.0
-        else:
+        if using_2b_controlnet:
             image_torch = image_torch * 255
+        else:
+            image_torch = 2.0 * image_torch - 1.0
         image_torch = image_torch.cuda()
         self.vae.model = self.vae.model.cuda()
         latent = self.vae.model.encode(image_torch).cpu()
@@ -419,10 +421,10 @@ class SD3Inferencer:
         self.print("Decoded")
         return out_image
 
-    def _image_to_latent(self, image, width, height, using_8b_controlnet: bool = False):
+    def _image_to_latent(self, image, width, height, using_2b_controlnet: bool = False):
         image_data = Image.open(image)
         image_data = image_data.resize((width, height), Image.LANCZOS)
-        latent = self.vae_encode(image_data, using_8b_controlnet)
+        latent = self.vae_encode(image_data, using_2b_controlnet)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -449,8 +451,12 @@ class SD3Inferencer:
             latent = self.get_empty_latent(1, width, height, seed, "cpu")
             latent = latent.cuda()
         if controlnet_cond_image:
+            using_2b_controlnet = (
+                self.sd3.model.control_model is not None
+                and not self.sd3.using_8b_controlnet
+            )
             controlnet_cond = self._image_to_latent(
-                controlnet_cond_image, width, height, self.sd3.using_8b_controlnet
+                controlnet_cond_image, width, height, using_2b_controlnet
             )
         neg_cond = self.get_cond("")
         seed_num = None
@@ -578,7 +584,7 @@ def main(
         else:
             prompts = [prompt]
 
-    sanitized_prompt = re.sub(r'[^\w\-\.]', '_', prompt)
+    sanitized_prompt = re.sub(r"[^\w\-\.]", "_", prompt)
     out_dir = os.path.join(
         out_dir,
         (
