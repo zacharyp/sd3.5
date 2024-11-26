@@ -36,6 +36,9 @@ class ControlNetEmbedder(nn.Module):
             dtype=dtype,
         )
 
+        # blur = 0, canny = 1, depth = 2
+        self.control_type = torch.tensor([0], dtype=torch.int32, device=device)
+
         self.t_embedder = TimestepEmbedder(self.hidden_size, dtype=dtype, device=device)
         self.y_embedder = VectorEmbedder(
             pooled_projection_size, self.hidden_size, dtype, device

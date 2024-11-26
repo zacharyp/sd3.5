@@ -57,7 +57,7 @@ def load_into(ckpt, model, prefix, device, dtype=None, remap=None):
                 continue
             try:
                 tensor = ckpt.get_tensor(key).to(device=device)
-                if dtype is not None:
+                if dtype is not None and tensor.dtype != torch.int32:
                     tensor = tensor.to(dtype=dtype)
                 obj.requires_grad_(False)
                 # print(f"K: {model_key}, O: {obj.shape} T: {tensor.shape}")
@@ -385,7 +385,9 @@ class SD3Inferencer:
         self.print("Sampling done")
         return latent
 
-    def vae_encode(self, image, using_2b_controlnet: bool = False) -> torch.Tensor:
+    def vae_encode(
+        self, image, using_2b_controlnet: bool = False, controlnet_type: int = 0
+    ) -> torch.Tensor:
         self.print("Encoding image to latent...")
         image = image.convert("RGB")
         image_np = np.array(image).astype(np.float32) / 255.0
@@ -393,7 +395,9 @@ class SD3Inferencer:
         batch_images = np.expand_dims(image_np, axis=0).repeat(1, axis=0)
         image_torch = torch.from_numpy(batch_images).cuda()
         if using_2b_controlnet:
-            image_torch = image_torch * 255
+            image_torch = image_torch * 2.0 - 1.0
+        elif controlnet_type == 1: # canny
+            image_torch = image_torch * 255 * 0.5 + 0.5
         else:
             image_torch = 2.0 * image_torch - 1.0
         image_torch = image_torch.cuda()
@@ -422,10 +426,17 @@ class SD3Inferencer:
         self.print("Decoded")
         return out_image
 
-    def _image_to_latent(self, image, width, height, using_2b_controlnet: bool = False):
+    def _image_to_latent(
+        self,
+        image,
+        width,
+        height,
+        using_2b_controlnet: bool = False,
+        controlnet_type: int = 0,
+    ) -> torch.Tensor:
         image_data = Image.open(image)
         image_data = image_data.resize((width, height), Image.LANCZOS)
-        latent = self.vae_encode(image_data, using_2b_controlnet)
+        latent = self.vae_encode(image_data, using_2b_controlnet, controlnet_type)
         latent = SD3LatentFormat().process_in(latent)
         return latent
 
@@ -452,12 +463,12 @@ class SD3Inferencer:
             latent = self.get_empty_latent(1, width, height, seed, "cpu")
             latent = latent.cuda()
         if controlnet_cond_image:
-            using_2b_controlnet = (
-                self.sd3.model.control_model is not None
-                and not self.sd3.using_8b_controlnet
-            )
+            using_2b, control_type = False, 0
+            if self.sd3.model.control_model is not None:
+                using_2b = not self.sd3.using_8b_controlnet
+                control_type = int(self.sd3.model.control_model.control_type.item())
             controlnet_cond = self._image_to_latent(
-                controlnet_cond_image, width, height, using_2b_controlnet
+                controlnet_cond_image, width, height, using_2b, control_type
             )
         neg_cond = self.get_cond("")
         seed_num = None
