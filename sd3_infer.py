@@ -14,13 +14,11 @@ import re
 
 import fire
 import numpy as np
+import sd3_impls
 import torch
+from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
 from PIL import Image
 from safetensors import safe_open
-from tqdm import tqdm
-
-import sd3_impls
-from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
 from sd3_impls import (
     SDVAE,
     BaseModel,
@@ -28,6 +26,7 @@ from sd3_impls import (
     SD3LatentFormat,
     SkipLayerCFGDenoiser,
 )
+from tqdm import tqdm
 
 #################################################################################################
 ### Wrappers for model parts
@@ -236,7 +235,7 @@ INIT_IMAGE = None
 # ControlNet
 CONTROLNET_COND_IMAGE = None
 # If init_image is given, this is the percentage of denoising steps to run (1.0 = full denoise, 0.0 = no denoise at all)
-DENOISE = 0.6
+DENOISE = 0.8
 # Output file path
 OUTDIR = "outputs"
 # SAMPLER
@@ -396,7 +395,7 @@ class SD3Inferencer:
         image_torch = torch.from_numpy(batch_images).cuda()
         if using_2b_controlnet:
             image_torch = image_torch * 2.0 - 1.0
-        elif controlnet_type == 1: # canny
+        elif controlnet_type == 1:  # canny
             image_torch = image_torch * 255 * 0.5 + 0.5
         else:
             image_torch = 2.0 * image_torch - 1.0
@@ -503,14 +502,14 @@ class SD3Inferencer:
 CONFIGS = {
     "sd3_medium": {
         "shift": 1.0,
-        "cfg": 5.0,
         "steps": 50,
+        "cfg": 5.0,
         "sampler": "dpmpp_2m",
     },
     "sd3.5_medium": {
         "shift": 3.0,
-        "cfg": 5.0,
         "steps": 50,
+        "cfg": 5.0,
         "sampler": "dpmpp_2m",
         "skip_layer_config": {
             "scale": 2.5,
@@ -522,11 +521,29 @@ CONFIGS = {
     },
     "sd3.5_large": {
         "shift": 3.0,
-        "cfg": 4.5,
         "steps": 40,
+        "cfg": 4.5,
         "sampler": "dpmpp_2m",
     },
     "sd3.5_large_turbo": {"shift": 3.0, "cfg": 1.0, "steps": 4, "sampler": "euler"},
+    "sd3.5_large_controlnet_blur": {
+        "shift": 3.0,
+        "steps": 60,
+        "cfg": 3.5,
+        "sampler": "euler",
+    },
+    "sd3.5_large_controlnet_canny": {
+        "shift": 3.0,
+        "steps": 60,
+        "cfg": 3.5,
+        "sampler": "euler",
+    },
+    "sd3.5_large_controlnet_depth": {
+        "shift": 3.0,
+        "steps": 60,
+        "cfg": 3.5,
+        "sampler": "euler",
+    },
 }
 
 
@@ -556,18 +573,13 @@ def main(
     **kwargs,
 ):
     assert not kwargs, f"Unknown arguments: {kwargs}"
-    steps = steps or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
-        "steps", 50
-    )
-    cfg = cfg or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
-        "cfg", 5
-    )
-    shift = shift or CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {}).get(
-        "shift", 3
-    )
-    sampler = sampler or CONFIGS.get(
-        os.path.splitext(os.path.basename(model))[0], {}
-    ).get("sampler", "dpmpp_2m")
+
+    config = CONFIGS.get(os.path.splitext(os.path.basename(model))[0], {})
+    _shift = shift or config.get("shift", 3)
+    _steps = steps or config.get("steps", 50)
+    _cfg = cfg or config.get("cfg", 5)
+    _sampler = sampler or config.get("sampler", "dpmpp_2m")
+
     if skip_layer_cfg:
         skip_layer_config = CONFIGS.get(
             os.path.splitext(os.path.basename(model))[0], {}
@@ -576,12 +588,21 @@ def main(
     else:
         skip_layer_config = {}
 
+    if controlnet_ckpt is not None:
+        controlnet_config = CONFIGS.get(
+            os.path.splitext(os.path.basename(controlnet_ckpt))[0], {}
+        )
+        _shift = shift or controlnet_config.get("shift", shift)
+        _steps = steps or controlnet_config.get("steps", steps)
+        _cfg = cfg or controlnet_config.get("cfg", cfg)
+        _sampler = sampler or controlnet_config.get("sampler", sampler)
+
     inferencer = SD3Inferencer()
 
     inferencer.load(
         model,
         vae,
-        shift,
+        _shift,
         controlnet_ckpt,
         model_folder,
         text_encoder_device,
@@ -616,9 +637,9 @@ def main(
         prompts,
         width,
         height,
-        steps,
-        cfg,
-        sampler,
+        _steps,
+        _cfg,
+        _sampler,
         seed,
         seed_type,
         out_dir,
