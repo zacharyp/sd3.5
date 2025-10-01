@@ -11,10 +11,6 @@ pip install -r requirements.txt
 mkdir models
 cd models
 
--- 123G !!
-git clone https://huggingface.co/stabilityai/stable-diffusion-3.5-large
-
--- 
 cd ~/code && git clone https://huggingface.co/stabilityai/stable-diffusion-3.5-medium
 
 cd models & ln -s ~/code/stable-diffusion-3.5-medium/sd3.5_medium.safetensors

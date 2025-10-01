@@ -225,9 +225,9 @@ SEED = 23
 SEEDTYPE = "rand"
 # SEEDTYPE = "roll"
 # Actual model file path
-# MODEL = "models/sd3_medium.safetensors"
+MODEL = "models/sd3.5_medium.safetensors"
 # MODEL = "models/sd3.5_large_turbo.safetensors"
-MODEL = "models/sd3.5_large.safetensors"
+# MODEL = "models/sd3.5_large.safetensors"
 # VAE model file path, or set None to use the same model file
 VAEFile = None  # "models/sd3_vae.safetensors"
 # Optional init image file path
@@ -652,3 +652,4 @@ def main(
 
 if __name__ == "__main__":
     fire.Fire(main)
+
