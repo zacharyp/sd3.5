@@ -18,6 +18,7 @@ import sd3_impls
 import torch
 from other_impls import SD3Tokenizer, SDClipModel, SDXLClipG, T5XXLModel
 from PIL import Image
+from random import randint
 from safetensors import safe_open
 from sd3_impls import (
     SDVAE,
@@ -493,7 +494,10 @@ class SD3Inferencer:
                 skip_layer_config,
             )
             image = self.vae_decode(sampled_latent)
-            save_path = os.path.join(out_dir, f"{i:06d}.png")
+            n = 10
+            filename = ''.join(["{}".format(randint(0, 9)) for num in range(0, n)])
+#            save_path = os.path.join(out_dir, f"{i:06d}.png")
+            save_path = os.path.join(out_dir, f"{filename}.png")
             self.print(f"Saving to to {save_path}")
             image.save(save_path)
             self.print("Done")
@@ -508,7 +512,7 @@ CONFIGS = {
     },
     "sd3.5_medium": {
         "shift": 3.0,
-        "steps": 50,
+        "steps": 100,
         "cfg": 5.0,
         "sampler": "dpmpp_2m",
         "skip_layer_config": {
@@ -633,21 +637,22 @@ def main(
 
     os.makedirs(out_dir, exist_ok=False)
 
-    inferencer.gen_image(
-        prompts,
-        width,
-        height,
-        _steps,
-        _cfg,
-        _sampler,
-        seed,
-        seed_type,
-        out_dir,
-        controlnet_cond_image,
-        init_image,
-        denoise,
-        skip_layer_config,
-    )
+    for i in range(7):
+        inferencer.gen_image(
+            prompts,
+            width,
+            height,
+            _steps,
+            _cfg,
+            _sampler,
+            seed,
+            seed_type,
+            out_dir,
+            controlnet_cond_image,
+            init_image,
+            denoise,
+            skip_layer_config,
+        )
 
 
 if __name__ == "__main__":
